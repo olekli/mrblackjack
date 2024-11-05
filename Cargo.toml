@@ -1,0 +1,37 @@
+[package]
+name = "mrblackjack"
+version = "0.1.0"
+authors = ["Ole Kliemann <mail@olekliemann.de>"]
+edition = "2021"
+
+[dependencies]
+env_logger = "0.11.5"
+futures = "0.3.31"
+k8s-openapi = { version = "0.23.0", features = ["v1_31"] }
+kube = { version = "0.96.0", features = ["runtime", "derive"] }
+log = "0.4.22"
+schemars = "0.8.21"
+serde = { version = "1.0.214", features = ["derive"] }
+serde_json = "1.0.132"
+serde_yaml = "0.9.34"
+thiserror = "1.0.68"
+tokio = { version = "1.41.0", features = ["full"] }
+tokio-util = "0.7.12"
+random_word = { version = "0.4.3", features = ["en"] }
+fmt = "0.1.0"
+clap = { version = "4.5.20", features = ["derive"] }
+
+[dev-dependencies]
+rstest = "0.17.0"
+
+[lib]
+name = "blackjack"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blackjack"
+path = "src/bin.rs"
+
+[[bin]]
+name = "make-schema"
+path = "src/make_schema.rs"
