@@ -81,6 +81,29 @@ steps:
                     - kind: StatefulSet
 ```
 
+### Running blackjack
+
+Place the test spec in a `test.yaml` inside a directory, let's say `my-test`.
+```shell
+cargo run --bin blackjack my-test
+```
+Blackjack will change the current working directory to the specified test directory.
+So all files specified in the `apply` sections should be relative to the test directory.
+
+In the above example, the directory structure would look like:
+
+```shell
+my-test/test.yaml
+my-test/preconditions.yaml
+my-test/sample-deployment.yaml
+my-test/sample-statefulset.yaml
+```
+
+Blackjack will override all namespaces of the resources it applies with a randomly generated namespace.
+
+Blackjack will cleanup all resources it has applied after the tests are finished.
+
+
 ### Condition Expression
 
 An expression can be `not` specifying an expression negated by logical NOT.
@@ -251,3 +274,8 @@ definitions:
         default: ""
         type: string
 ```
+
+## Known Issues
+
+* You should not have `kind: Namespace` resources in the manifests you let blackjack apply.
+Currently, this will lead to the entire namespace being deleted after the test finished.
