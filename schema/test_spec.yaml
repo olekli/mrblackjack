@@ -1,152 +1,286 @@
-$schema: http://json-schema.org/draft-07/schema#
-title: TestSpec
-type: object
-required:
-  - id
-properties:
-  id:
-    type: string
-  steps:
-    default: []
-    type: array
-    items:
-      $ref: '#/definitions/StepSpec'
-definitions:
-  ApplySpec:
-    anyOf:
-      - type: object
-        required:
-          - file
-        properties:
-          file:
-            type: string
-      - type: object
-        required:
-          - dir
-        properties:
-          dir:
-            type: string
-  AssertSpec:
-    type: object
-    required:
-      - condition
-      - target
-    properties:
-      condition:
-        $ref: '#/definitions/Expr'
-      target:
-        type: string
-  Expr:
-    anyOf:
-      - type: object
-        required:
-          - and
-        properties:
-          and:
-            type: array
-            items:
-              $ref: '#/definitions/Expr'
-      - type: object
-        required:
-          - or
-        properties:
-          or:
-            type: array
-            items:
-              $ref: '#/definitions/Expr'
-      - type: object
-        required:
-          - not
-        properties:
-          not:
-            $ref: '#/definitions/Expr'
-      - type: object
-        required:
-          - size
-        properties:
-          size:
-            type: integer
-            format: uint
-            minimum: 0.0
-      - type: object
-        required:
-          - one
-        properties:
-          one: true
-      - type: object
-        required:
-          - all
-        properties:
-          all: true
-  StepSpec:
-    type: object
-    required:
-      - id
-    properties:
-      apply:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/ApplySpec'
-      assert:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/AssertSpec'
-      id:
-        type: string
-      wait:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/WaitSpec'
-      watch:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/WatchSpec'
-  WaitSpec:
-    type: object
-    required:
-      - condition
-      - target
-      - timeout
-    properties:
-      condition:
-        $ref: '#/definitions/Expr'
-      target:
-        type: string
-      timeout:
-        type: integer
-        format: uint32
-        minimum: 0.0
-  WatchSpec:
-    type: object
-    required:
-      - id
-    properties:
-      fields:
-        default: null
-        type:
-          - object
-          - "null"
-        additionalProperties:
-          type: string
-      group:
-        default: ""
-        type: string
-      id:
-        type: string
-      kind:
-        default: ""
-        type: string
-      labels:
-        default: null
-        type:
-          - object
-          - "null"
-        additionalProperties:
-          type: string
-      version:
-        default: ""
-        type: string
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TestSpec",
+  "type": "object",
+  "required": [
+    "name"
+  ],
+  "properties": {
+    "dir": {
+      "default": "",
+      "readOnly": true,
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "steps": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/StepSpec"
+      }
+    }
+  },
+  "definitions": {
+    "ApplySpec": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "file"
+          ],
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "dir"
+          ],
+          "properties": {
+            "dir": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "AssertSpec": {
+      "type": "object",
+      "required": [
+        "condition",
+        "target"
+      ],
+      "properties": {
+        "condition": {
+          "$ref": "#/definitions/Expr"
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    "BucketOperation": {
+      "type": "string",
+      "enum": [
+        "create",
+        "patch",
+        "delete"
+      ]
+    },
+    "BucketSpec": {
+      "type": "object",
+      "required": [
+        "name",
+        "operations"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BucketOperation"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "Expr": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "and"
+          ],
+          "properties": {
+            "and": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "or"
+          ],
+          "properties": {
+            "or": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "not"
+          ],
+          "properties": {
+            "not": {
+              "$ref": "#/definitions/Expr"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "size"
+          ],
+          "properties": {
+            "size": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "one"
+          ],
+          "properties": {
+            "one": true
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "all"
+          ],
+          "properties": {
+            "all": true
+          }
+        }
+      ]
+    },
+    "StepSpec": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "apply": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ApplySpec"
+          }
+        },
+        "assert": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AssertSpec"
+          }
+        },
+        "bucket": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BucketSpec"
+          }
+        },
+        "delete": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ApplySpec"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "wait": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/WaitSpec"
+          }
+        },
+        "watch": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/WatchSpec"
+          }
+        }
+      }
+    },
+    "WaitSpec": {
+      "type": "object",
+      "required": [
+        "condition",
+        "target",
+        "timeout"
+      ],
+      "properties": {
+        "condition": {
+          "$ref": "#/definitions/Expr"
+        },
+        "target": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "WatchSpec": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "fields": {
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "group": {
+          "default": "",
+          "type": "string"
+        },
+        "kind": {
+          "default": "",
+          "type": "string"
+        },
+        "labels": {
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

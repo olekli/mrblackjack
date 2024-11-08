@@ -8,18 +8,20 @@ Simple framework for testing Kubernetes operators
 A `test` consists of a number of `steps`.
 
 Each `step` can have a `watch` specifying resources to watch for.
-Contents of watched resources are stored in a bucket accessible via the `id` of the `watch`.
+Contents of watched resources are stored in a bucket accessible via the `name` of the `watch`.
 
 Each `step` can have a `apply` specifying files containing manifests to apply to the cluster.
+
+Each `step` can have a `delete` specifying files containing manifests to delete from the cluster.
 
 Each `step` can have a `wait` specifying a `condition` to await in a `target`ed bucket of watched resources.
 
 ```yaml
-id: my-test
+name: my-test
 steps:
-  - id: preconditions
+  - name: preconditions
     watch:
-      - id: pre-pods
+      - name: pre-pods
         group: ''
         version: v1
         kind: Pod
@@ -36,9 +38,9 @@ steps:
                   conditions:
                     - type: Ready
                       status: "True"
-  - id: deploy-as-deployment
+  - name: deploy-as-deployment
     watch:
-      - id: crd-pods
+      - name: crd-pods
         group: ''
         version: v1
         kind: Pod
@@ -61,7 +63,7 @@ steps:
                 metadata:
                   ownerReferences:
                     - kind: ReplicaSet
-  - id: deploy-as-statefulset
+  - name: deploy-as-statefulset
     apply:
       - file: sample-statefulset.yaml
     wait:
@@ -83,25 +85,29 @@ steps:
 
 ### Running blackjack
 
-Place the test spec in a `test.yaml` inside a directory, let's say `my-test`.
+Place the test spec in a `test.yaml` inside a directory, let's say `my-test-1`.
+The directory `my-test-1` itself should be in a another directory that collects all your tests, let's say `test`.
 ```shell
-cargo run --bin blackjack my-test
+cargo run --bin blackjack test
 ```
-Blackjack will change the current working directory to the specified test directory.
-So all files specified in the `apply` sections should be relative to the test directory.
+All files specified in the `apply` sections should be relative to the test directory `my-test-1`.
 
 In the above example, the directory structure would look like:
 
 ```shell
-my-test/test.yaml
-my-test/preconditions.yaml
-my-test/sample-deployment.yaml
-my-test/sample-statefulset.yaml
+test/my-test-1/test.yaml
+test/my-test-1/preconditions.yaml
+test/my-test-1/sample-deployment.yaml
+test/my-test-1/sample-statefulset.yaml
+test/my-test-2/test.yaml
+test/my-test-2/...
 ```
 
-Blackjack will override all namespaces of the resources it applies with a randomly generated namespace.
+Blackjack will overrnamee all namespaces of the resources it applies with a randomly generated namespace.
 
 Blackjack will cleanup all resources it has applied after the tests are finished.
+
+All test directories in `test` will be run in parallel.
 
 
 ### Condition Expression
@@ -125,9 +131,9 @@ $schema: http://json-schema.org/draft-07/schema#
 title: TestSpec
 type: object
 required:
-  - id
+  - name
 properties:
-  id:
+  name:
     type: string
   steps:
     default: []
@@ -204,7 +210,7 @@ definitions:
   StepSpec:
     type: object
     required:
-      - id
+      - name
     properties:
       apply:
         default: []
@@ -216,7 +222,7 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/AssertSpec'
-      id:
+      name:
         type: string
       wait:
         default: []
@@ -246,7 +252,7 @@ definitions:
   WatchSpec:
     type: object
     required:
-      - id
+      - name
     properties:
       fields:
         default: null
@@ -258,7 +264,7 @@ definitions:
       group:
         default: ""
         type: string
-      id:
+      name:
         type: string
       kind:
         default: ""

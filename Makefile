@@ -12,3 +12,6 @@ run-info:
 .PHONY: test
 test:
 	cargo run --bin blackjack test
+
+schema/test_spec.yaml: src/test_spec.rs
+	cargo run --bin make-schema > $@
