@@ -1,9 +1,9 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::collector::{CollectedDataContainer, Collector, Bucket};
+use crate::collector::{Bucket, CollectedDataContainer, Collector};
 use crate::error::{FailedTest, Result, TestResult};
-use crate::file::list_directories;
+use crate::file::{list_directories, list_files};
 use crate::manifest::ManifestHandle;
 use crate::namespace::NamespaceHandle;
 use crate::result_formatting::log_result;
@@ -11,7 +11,6 @@ use crate::test_spec::{ApplySpec, StepSpec, TestSpec};
 use crate::wait::wait_for_all;
 use futures::future::join_all;
 use kube::Client;
-use std::env;
 use std::path::{Path, PathBuf};
 use tokio::task::JoinSet;
 
@@ -128,7 +127,7 @@ async fn run_steps(
     Ok(test_spec.name.clone())
 }
 
-pub async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
+async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     let namespace = make_namespace(&test_spec.name);
     log::info!(
         "Running test '{}' in namespace '{}'",
@@ -173,15 +172,8 @@ pub async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     result
 }
 
-pub async fn run_test_multiple_dir(
-    client: Client,
-    test_dirs: Vec<PathBuf>,
-) -> Result<Vec<TestResult>> {
+async fn run_all_tests(client: Client, test_specs: Vec<TestSpec>) -> Result<Vec<TestResult>> {
     let mut set = JoinSet::new();
-    let mut test_specs: Vec<TestSpec> = vec![];
-    for test_dir in test_dirs {
-        test_specs.push(TestSpec::new_from_file(test_dir)?);
-    }
     for test_spec in test_specs {
         let client = client.clone();
         set.spawn(async move { run_test(client, test_spec).await });
@@ -191,12 +183,35 @@ pub async fn run_test_multiple_dir(
 
 pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
-    env::set_current_dir(&dirname)?;
-    let test_dirs = list_directories(".")?;
-    let results = run_test_multiple_dir(client, test_dirs).await?;
+    let test_specs = discover_tests(&dirname.to_path_buf())?;
+    let results = run_all_tests(client, test_specs).await?;
     //results.sort_by(|lhs, rhs| lhs.is_ok() < rhs.is_ok());
     for result in results {
         log_result(&result);
     }
     Ok(())
+}
+
+fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {
+    log::trace!("Discovering tests: {dirname:?}");
+    let files = list_files(dirname)?;
+    if files
+        .iter()
+        .filter_map(|e| e.file_name())
+        .find(|&x| x == "test.yaml")
+        .is_some()
+    {
+        return Ok(vec![TestSpec::new_from_file(dirname.clone())?]);
+    } else {
+        let dirs: Vec<PathBuf> = list_directories(dirname)?;
+        log::trace!("Descending into {dirs:?}");
+        let result: Vec<TestSpec> = dirs
+            .into_iter()
+            .map(|dir| Ok(discover_tests(&dir)?))
+            .collect::<Result<Vec<Vec<TestSpec>>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        return Ok(result);
+    }
 }

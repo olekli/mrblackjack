@@ -1,7 +1,7 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use blackjack::error::{Result};
+use blackjack::error::Result;
 use blackjack::run_test::run_test_suite;
 use clap::Parser;
 use env_logger;

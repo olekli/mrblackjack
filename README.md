@@ -7,107 +7,47 @@ Simple framework for testing Kubernetes operators
 
 A `test` consists of a number of `steps`.
 
-Each `step` can have a `watch` specifying resources to watch for.
-Contents of watched resources are stored in a bucket accessible via the `name` of the `watch`.
+Each `step` can have a `watch` list, specifying resources to watch for
+by group, version and kind as well as label and field selectors.
+All resources matching the specifications are stored in a bucket under the `name` of this `watch` entry.
+The later tests will consist of conditions that have to hold true for the contents of a bucket.
 
-Each `step` can have a `apply` specifying files containing manifests to apply to the cluster.
+Each `step` can have a `bucket` list, allowing to set the operations on a bucket.
+Operations are `Create`, `Patch`, `Delete`.
+If a `watch` sees a new resource and its bucket allows `Create`,
+the resource is stored in the bucket.
+If a `watch` sees a changed resource and its bucket allows `Patch`,
+the resource stored is updated.
+If a `watch` sees a resource deletion and its bucket allows `Delete`,
+the resource stored is removed from the bucket.
 
-Each `step` can have a `delete` specifying files containing manifests to delete from the cluster.
+You can, for example, collect all Pods matching some label in one step,
+then set the bucket to `Delete` only in the next step.
+If the Pods are restarted now, they disappear from the bucket,
+but the newly started ones do not appear.
 
-Each `step` can have a `wait` specifying a `condition` to await in a `target`ed bucket of watched resources.
+Each `step` can have an `apply` list specifying files containing manifests to apply to the cluster.
 
-```yaml
-name: my-test
-steps:
-  - name: preconditions
-    watch:
-      - name: pre-pods
-        group: ''
-        version: v1
-        kind: Pod
-    apply:
-      - file: preconditions.yaml
-    wait:
-      - target: pre-pods
-        timeout: 20
-        condition:
-          and:
-            - size: 3
-            - all:
-                status:
-                  conditions:
-                    - type: Ready
-                      status: "True"
-  - name: deploy-as-deployment
-    watch:
-      - name: crd-pods
-        group: ''
-        version: v1
-        kind: Pod
-        labels:
-          app: my-custom-app
-    apply:
-      - file: sample-deployment.yaml
-    wait:
-      - target: crd-pods
-        timeout: 30
-        condition:
-          and:
-            - size: 3
-            - all:
-                status:
-                  conditions:
-                    - type: Ready
-                      status: "True"
-            - all:
-                metadata:
-                  ownerReferences:
-                    - kind: ReplicaSet
-  - name: deploy-as-statefulset
-    apply:
-      - file: sample-statefulset.yaml
-    wait:
-      - target: crd-pods
-        timeout: 30
-        condition:
-          and:
-            - size: 3
-            - all:
-                status:
-                  conditions:
-                    - type: Ready
-                      status: "True"
-            - all:
-                metadata:
-                  ownerReferences:
-                    - kind: StatefulSet
-```
+Each `step` can have a `delete` list specifying files containing manifests to delete from the cluster.
+
+Each `step` can have a `wait` list specifying `condition`s to await in a `target`ed bucket of watched resources.
+
+For examples, please see the tests in `test/`.
 
 ### Running blackjack
 
-Place the test spec in a `test.yaml` inside a directory, let's say `my-test-1`.
-The directory `my-test-1` itself should be in a another directory that collects all your tests, let's say `test`.
 ```shell
-cargo run --bin blackjack test
+cargo run --bin blackjack TEST-DIR
 ```
-All files specified in the `apply` sections should be relative to the test directory `my-test-1`.
+All tests have to be named `test.yaml`.
+Blackjack will discover all `test.yaml` in the directory tree starting at `TEST-DIR`.
+All files specified in the `apply` sections have to be relative to the directory where the corresponding `test.yaml` resides.
 
-In the above example, the directory structure would look like:
+All test found will be run in parallel.
 
-```shell
-test/my-test-1/test.yaml
-test/my-test-1/preconditions.yaml
-test/my-test-1/sample-deployment.yaml
-test/my-test-1/sample-statefulset.yaml
-test/my-test-2/test.yaml
-test/my-test-2/...
-```
+For each test, blackjack will override all namespaces of the resources it applies with a randomly generated namespace.
 
-Blackjack will overrnamee all namespaces of the resources it applies with a randomly generated namespace.
-
-Blackjack will cleanup all resources it has applied after the tests are finished.
-
-All test directories in `test` will be run in parallel.
+For each test, blackjack will clean up all resources it has applied after the tests are finished.
 
 
 ### Condition Expression
@@ -124,164 +64,8 @@ An expression can be `all` specifying a partial object that needs to match again
 
 An expression can be `one` specifying a partial object that needs to match against at least one resources recorded in the `target` bucket.
 
-## Full Schema for Test Spec
+### Full Schema for Test Spec
 
-```yaml
-$schema: http://json-schema.org/draft-07/schema#
-title: TestSpec
-type: object
-required:
-  - name
-properties:
-  name:
-    type: string
-  steps:
-    default: []
-    type: array
-    items:
-      $ref: '#/definitions/StepSpec'
-definitions:
-  ApplySpec:
-    anyOf:
-      - type: object
-        required:
-          - file
-        properties:
-          file:
-            type: string
-      - type: object
-        required:
-          - dir
-        properties:
-          dir:
-            type: string
-  AssertSpec:
-    type: object
-    required:
-      - condition
-      - target
-    properties:
-      condition:
-        $ref: '#/definitions/Expr'
-      target:
-        type: string
-  Expr:
-    anyOf:
-      - type: object
-        required:
-          - and
-        properties:
-          and:
-            type: array
-            items:
-              $ref: '#/definitions/Expr'
-      - type: object
-        required:
-          - or
-        properties:
-          or:
-            type: array
-            items:
-              $ref: '#/definitions/Expr'
-      - type: object
-        required:
-          - not
-        properties:
-          not:
-            $ref: '#/definitions/Expr'
-      - type: object
-        required:
-          - size
-        properties:
-          size:
-            type: integer
-            format: uint
-            minimum: 0.0
-      - type: object
-        required:
-          - one
-        properties:
-          one: true
-      - type: object
-        required:
-          - all
-        properties:
-          all: true
-  StepSpec:
-    type: object
-    required:
-      - name
-    properties:
-      apply:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/ApplySpec'
-      assert:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/AssertSpec'
-      name:
-        type: string
-      wait:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/WaitSpec'
-      watch:
-        default: []
-        type: array
-        items:
-          $ref: '#/definitions/WatchSpec'
-  WaitSpec:
-    type: object
-    required:
-      - condition
-      - target
-      - timeout
-    properties:
-      condition:
-        $ref: '#/definitions/Expr'
-      target:
-        type: string
-      timeout:
-        type: integer
-        format: uint32
-        minimum: 0.0
-  WatchSpec:
-    type: object
-    required:
-      - name
-    properties:
-      fields:
-        default: null
-        type:
-          - object
-          - "null"
-        additionalProperties:
-          type: string
-      group:
-        default: ""
-        type: string
-      name:
-        type: string
-      kind:
-        default: ""
-        type: string
-      labels:
-        default: null
-        type:
-          - object
-          - "null"
-        additionalProperties:
-          type: string
-      version:
-        default: ""
-        type: string
-```
+The schema can be found in `schema/test_spec.yaml`.
 
 ## Known Issues
-
-* You should not have `kind: Namespace` resources in the manifests you let blackjack apply.
-Currently, this will lead to the entire namespace being deleted after the test finished.

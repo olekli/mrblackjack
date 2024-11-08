@@ -12,7 +12,7 @@ use kube::{
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::fs;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct ManifestHandle {
@@ -73,6 +73,10 @@ impl ManifestHandle {
                 .get("kind")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Other("Missing kind".to_string()))?;
+
+            if kind == "Namespace" {
+                continue;
+            }
 
             let group_version = api_version.split('/').collect::<Vec<&str>>();
             let (group, version) = if group_version.len() == 2 {

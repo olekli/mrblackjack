@@ -41,13 +41,25 @@ pub fn read_yaml_files(dirname: PathBuf) -> Result<String> {
     Ok(combined)
 }
 
-pub fn list_directories(dirname: &str) -> Result<Vec<PathBuf>> {
+pub fn list_directories(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
     let root = Path::new(dirname);
     Ok(fs::read_dir(root)?
         .filter_map(|res| res.ok())
         .filter_map(|e| {
             let path = e.path();
-            path.is_dir().then(|| root.join(path))
+            //    path.is_dir().then(|| root.join(path))
+            path.is_dir().then(|| path)
+        })
+        .collect())
+}
+
+pub fn list_files(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
+    let root = Path::new(dirname);
+    Ok(fs::read_dir(root)?
+        .filter_map(|res| res.ok())
+        .filter_map(|e| {
+            let path = e.path();
+            path.is_file().then(|| root.join(path))
         })
         .collect())
 }
