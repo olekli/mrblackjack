@@ -11,3 +11,4 @@ pub mod namespace;
 pub mod run_test;
 pub mod wait;
 pub mod file;
+pub mod result_formatting;

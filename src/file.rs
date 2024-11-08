@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::{Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs;
 
-pub fn read_yaml_files(dirname: &str) -> Result<String> {
+pub fn read_yaml_files(dirname: PathBuf) -> Result<String> {
     let dir = Path::new(&dirname);
     let mut combined = String::new();
     let mut entries: Vec<_> = fs::read_dir(dir)?
@@ -38,4 +38,16 @@ pub fn read_yaml_files(dirname: &str) -> Result<String> {
     }
 
     Ok(combined)
+}
+
+pub fn list_directories(dirname: &str) -> Result<Vec<PathBuf>> {
+    let root = Path::new(dirname);
+    Ok(fs::read_dir(root)?
+        .filter_map(|res| res.ok())
+        .filter_map(|e| {
+            let path = e.path();
+            path.is_dir().then(|| root.join(path))
+        })
+        .collect()
+    )
 }

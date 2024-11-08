@@ -20,6 +20,7 @@ tokio-util = "0.7.12"
 random_word = { version = "0.4.3", features = ["en"] }
 fmt = "0.1.0"
 clap = { version = "4.5.20", features = ["derive"] }
+colored = "2.1.0"
 
 [dev-dependencies]
 rstest = "0.17.0"

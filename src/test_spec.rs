@@ -10,18 +10,23 @@ use std::{
     fs::File,
 };
 use schemars::{JsonSchema, schema_for, schema::RootSchema};
+use std::path::{Path, PathBuf};
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TestSpec {
     pub id: String,
     #[serde(default)]
     pub steps: Vec<StepSpec>,
+    #[serde(skip_deserializing)]
+    pub dir: PathBuf,
 }
 
 impl TestSpec {
-    pub fn new_from_file(filename: &String) -> Result<TestSpec> {
-        let file = File::open(filename)?;
-        let testspec: TestSpec = serde_yaml::from_reader(file)?;
+    pub fn new_from_file(dirname: PathBuf) -> Result<TestSpec> {
+        let path = dirname.join(Path::new("test.yaml"));
+        let file = File::open(path)?;
+        let mut testspec: TestSpec = serde_yaml::from_reader(file)?;
+        testspec.dir = dirname;
         Ok(testspec)
     }
 
@@ -37,6 +42,8 @@ pub struct StepSpec {
     pub watch: Vec<WatchSpec>,
     #[serde(default)]
     pub apply: Vec<ApplySpec>,
+    #[serde(default)]
+    pub delete: Vec<ApplySpec>,
     #[serde(default)]
     pub wait: Vec<WaitSpec>,
     #[serde(default)]

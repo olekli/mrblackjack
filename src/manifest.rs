@@ -12,6 +12,7 @@ use kube::{
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct ManifestHandle {
@@ -40,7 +41,7 @@ impl ManifestHandle {
 
     pub async fn new_from_file(
         client: Client,
-        filename: &str,
+        filename: PathBuf,
         namespace_override: &str,
     ) -> Result<Self> {
         ManifestHandle::new_from_data(client, fs::read_to_string(filename)?, namespace_override).await
@@ -48,7 +49,7 @@ impl ManifestHandle {
 
     pub async fn new_from_dir(
         client: Client,
-        dirname: &str,
+        dirname: PathBuf,
         namespace_override: &str,
     ) -> Result<Self> {
         ManifestHandle::new_from_data(client, read_yaml_files(dirname)?, namespace_override).await

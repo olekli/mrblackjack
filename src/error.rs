@@ -32,6 +32,9 @@ pub enum Error {
     #[error("Tests failed: {0:?}")]
     TestFailures(Vec<TestFailure>),
 
+    #[error("Path encoding error")]
+    PathEncodingError,
+
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -44,6 +47,16 @@ pub enum TestFailure {
     #[error("Failed assert: {0}")]
     FailedAssert(AssertDiagnostic),
 }
+
+pub struct FailedTest {
+    pub test_name: String,
+    pub step_name: String,
+    pub failure: Error,
+}
+
+pub type SucceededTest = String;
+
+pub type TestResult = std::result::Result<SucceededTest, FailedTest>;
 
 #[derive(Clone, Debug)]
 pub struct AssertDiagnostic {
