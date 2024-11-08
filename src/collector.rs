@@ -1,7 +1,11 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{error::Error, error::Result, test_spec::WatchSpec};
+use crate::{
+    error::Error,
+    error::Result,
+    test_spec::{BucketOperation, BucketSpec, WatchSpec},
+};
 use futures::StreamExt;
 use kube::{
     api::{DynamicObject, Patch, PatchParams},
@@ -13,7 +17,7 @@ use kube::{
 };
 use serde_json;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -22,7 +26,25 @@ use tokio_util::sync::CancellationToken;
 
 const FINALIZER_NAME: &str = "blackjack.io/finalizer";
 
-pub type CollectedData = HashMap<String, HashMap<String, serde_json::Value>>;
+pub struct Bucket {
+    pub allowed_operations: HashSet<BucketOperation>,
+    pub data: HashMap<String, serde_json::Value>,
+}
+
+impl Bucket {
+    pub fn new() -> Self {
+        Bucket {
+            allowed_operations: HashSet::from([
+                BucketOperation::Create,
+                BucketOperation::Patch,
+                BucketOperation::Delete,
+            ]),
+            data: HashMap::new(),
+        }
+    }
+}
+
+pub type CollectedData = HashMap<String, Bucket>;
 pub type CollectedDataContainer = Arc<RwLock<CollectedData>>;
 
 pub struct Collector {
@@ -124,7 +146,7 @@ impl Collector {
                 while let Some(event) = tokio::select! {
                     biased;
                     _ = token.cancelled() => {
-                        log::debug!("Watcher for id '{}' received cancellation signal.", spec.id);
+                        log::debug!("Watcher for id '{}' received cancellation signal.", spec.name);
                         None
                     }
                     event = stream.next() => event,
@@ -155,22 +177,32 @@ impl Collector {
                                     let value = serde_json::to_value(&obj)
                                         .unwrap_or_else(|_| serde_json::Value::Null);
                                     let mut data = collected_data.write().await;
-                                    let inner_map = data
+                                    let bucket = data
                                         .deref_mut()
-                                        .entry(spec.id.clone())
-                                        .or_insert_with(HashMap::new);
-                                    inner_map.insert(uid, value);
+                                        .entry(spec.name.clone())
+                                        .or_insert_with(Bucket::new);
+                                    if (!bucket.data.contains_key(&uid)
+                                        && bucket
+                                            .allowed_operations
+                                            .contains(&BucketOperation::Create))
+                                        || (bucket.data.contains_key(&uid)
+                                            && bucket
+                                                .allowed_operations
+                                                .contains(&BucketOperation::Patch))
+                                    {
+                                        bucket.data.insert(uid, value);
+                                    }
                                 }
                             }
                         }
                         Ok(_) => {}
                         Err(e) => {
-                            log::warn!("Error watching resource for id '{}': {}", spec.id, e);
+                            log::warn!("Error watching resource for id '{}': {}", spec.name, e);
                         }
                     }
                 }
 
-                log::debug!("Watcher for id '{}' is terminating.", spec.id);
+                log::debug!("Watcher for id '{}' is terminating.", spec.name);
 
                 Ok(())
             });
@@ -194,8 +226,10 @@ impl Collector {
 
         if let Some(uid) = uid {
             let mut data = collected_data.write().await;
-            for inner_map in data.values_mut() {
-                inner_map.remove(&uid);
+            for bucket in data.values_mut() {
+                if bucket.allowed_operations.contains(&BucketOperation::Delete) {
+                    bucket.data.remove(&uid);
+                }
             }
         }
 
@@ -217,7 +251,7 @@ impl Collector {
         let uids: Vec<String> = {
             let data = self.collected_data.read().await;
             data.iter()
-                .flat_map(|(_, uid_map)| uid_map.iter())
+                .flat_map(|(_, bucket)| bucket.data.iter())
                 .map(|(uid, _)| uid.clone())
                 .collect()
         };
@@ -226,7 +260,7 @@ impl Collector {
             let resource = {
                 let data = self.collected_data.read().await;
                 data.values()
-                    .flat_map(|inner_map| inner_map.get(&uid))
+                    .flat_map(|bucket| bucket.data.get(&uid))
                     .next()
                     .cloned()
             };
@@ -250,10 +284,14 @@ impl Collector {
                     kind: kind.clone(),
                 };
 
-                let (ar, caps) = self
-                    .discovery
-                    .resolve_gvk(&gvk)
-                    .ok_or_else(|| Error::DiscoveryError{group: gvk.group, version: gvk.version, kind: gvk.kind})?;
+                let (ar, caps) =
+                    self.discovery
+                        .resolve_gvk(&gvk)
+                        .ok_or_else(|| Error::DiscoveryError {
+                            group: gvk.group,
+                            version: gvk.version,
+                            kind: gvk.kind,
+                        })?;
 
                 let api: Api<DynamicObject> = if caps.scope == Scope::Namespaced {
                     Api::namespaced_with(self.client.clone(), &namespace, &ar)

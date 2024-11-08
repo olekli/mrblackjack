@@ -33,7 +33,7 @@ async fn run_step(
     collectors: &mut Vec<Collector>,
     collected_data: &CollectedDataContainer,
 ) -> Result<()> {
-    log::info!("Running step '{}' in namespace '{}'", step.id, namespace);
+    log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
     collectors.push(
         Collector::new(
             client.clone(),
@@ -92,25 +92,25 @@ async fn run_steps(
         )
         .await
         .map_err(|err| FailedTest {
-            test_name: test_spec.id.clone(),
-            step_name: step.id.clone(),
+            test_name: test_spec.name.clone(),
+            step_name: step.name.clone(),
             failure: err,
         })?;
     }
 
-    Ok(test_spec.id.clone())
+    Ok(test_spec.name.clone())
 }
 
 pub async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
-    let namespace = make_namespace(&test_spec.id);
+    let namespace = make_namespace(&test_spec.name);
     log::info!(
         "Running test '{}' in namespace '{}'",
-        test_spec.id,
+        test_spec.name,
         namespace
     );
     let namespace_handle = NamespaceHandle::new(client.clone(), &namespace);
     namespace_handle.create().await.map_err(|err| FailedTest {
-        test_name: test_spec.id.clone(),
+        test_name: test_spec.name.clone(),
         step_name: "".to_string(),
         failure: err,
     })?;

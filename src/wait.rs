@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::check::assert_expr;
-use crate::collector::{CollectedData, CollectedDataContainer};
+use crate::collector::{CollectedData, CollectedDataContainer, Bucket};
 use crate::error::{AssertDiagnostic, Error, Result, TestFailure};
 use crate::test_spec::WaitSpec;
-use std::collections::HashMap;
 use std::ops::Deref;
 use tokio::time::{sleep, Duration};
 
@@ -13,11 +12,12 @@ fn check_spec_against_data(
     wait_spec: &WaitSpec,
     collected_data: &CollectedData,
 ) -> std::result::Result<(), AssertDiagnostic> {
-    let default = HashMap::new();
+    let default = Bucket::new();
     let data = collected_data
         .get(&wait_spec.target)
         .or_else(|| Some(&default))
         .unwrap()
+        .data
         .iter()
         .map(|(_, value)| value)
         .collect::<Vec<&serde_json::Value>>();

@@ -6,7 +6,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fs::File,
 };
 use schemars::{JsonSchema, schema_for, schema::RootSchema};
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TestSpec {
-    pub id: String,
+    pub name: String,
     #[serde(default)]
     pub steps: Vec<StepSpec>,
     #[serde(skip_deserializing)]
@@ -37,7 +37,9 @@ impl TestSpec {
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct StepSpec {
-    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub bucket: Vec<BucketSpec>,
     #[serde(default)]
     pub watch: Vec<WatchSpec>,
     #[serde(default)]
@@ -51,8 +53,22 @@ pub struct StepSpec {
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BucketSpec {
+    pub name: String,
+    pub operations: HashSet<BucketOperation>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Eq, Hash, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum BucketOperation {
+    Create,
+    Patch,
+    Delete,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct WatchSpec {
-    pub id: String,
+    pub name: String,
     #[serde(default)]
     pub kind: String,
     #[serde(default)]
