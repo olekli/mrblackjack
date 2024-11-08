@@ -1,12 +1,11 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
+use blackjack::error::{Result};
 use blackjack::run_test::run_test_suite;
-use blackjack::error::{Result, Error};
-use blackjack::test_spec::{TestSpec};
+use clap::Parser;
 use env_logger;
 use env_logger::Env;
-use clap::Parser;
 use std::path::Path;
 
 #[derive(Parser)] // requires `derive` feature
@@ -18,8 +17,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let env = Env::default()
-        .filter_or("BLACKJACK_LOG_LEVEL", "info");
+    let env = Env::default().filter_or("BLACKJACK_LOG_LEVEL", "info");
     env_logger::init_from_env(env);
     let args = Cli::parse();
 

@@ -1,12 +1,12 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use kube::{Api, Client};
-use kube::api::{DeleteParams, PostParams, Patch, PatchParams};
-use k8s_openapi::api::core::v1::Namespace;
 use crate::error::{Error, Result};
-use tokio::time::{sleep, Duration};
+use k8s_openapi::api::core::v1::Namespace;
+use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
+use kube::{Api, Client};
 use serde_json::json;
+use tokio::time::{sleep, Duration};
 
 pub struct NamespaceHandle {
     namespace: String,
@@ -32,12 +32,8 @@ impl NamespaceHandle {
         };
 
         match self.api.create(&PostParams::default(), &ns).await {
-            Ok(_) => {
-                Ok(())
-            },
-            Err(kube::Error::Api(ae)) if ae.code == 409 => {
-                Err(Error::NamespaceExists)
-            },
+            Ok(_) => Ok(()),
+            Err(kube::Error::Api(ae)) if ae.code == 409 => Err(Error::NamespaceExists),
             Err(e) => Err(Error::from(e)),
         }
     }
@@ -67,9 +63,7 @@ impl NamespaceHandle {
                     Ok(false)
                 }
             }
-            Err(kube::Error::Api(ae)) if ae.code == 404 => {
-                Ok(false)
-            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(false),
             Err(e) => Err(Error::from(e)),
         }
     }

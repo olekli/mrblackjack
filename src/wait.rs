@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::check::assert_expr;
-use crate::collector::{CollectedData, CollectedDataContainer, Bucket};
+use crate::collector::{Bucket, CollectedData, CollectedDataContainer};
 use crate::error::{AssertDiagnostic, Error, Result, TestFailure};
 use crate::test_spec::WaitSpec;
 use std::ops::Deref;
@@ -45,7 +45,10 @@ pub async fn wait_for_all(
             waits.into_iter().zip(result.into_iter()).collect();
         let fail: Vec<(&WaitSpec, std::result::Result<(), AssertDiagnostic>)> =
             zipped.into_iter().filter(|(_, r)| r.is_err()).collect();
-        let (remaining_waits, failed_results): (Vec<&WaitSpec>, Vec<std::result::Result<(), AssertDiagnostic>>) = fail.into_iter().unzip();
+        let (remaining_waits, failed_results): (
+            Vec<&WaitSpec>,
+            Vec<std::result::Result<(), AssertDiagnostic>>,
+        ) = fail.into_iter().unzip();
         let last_errors: Vec<_> = failed_results.into_iter().map(|r| r.unwrap_err()).collect();
         waits = remaining_waits;
 

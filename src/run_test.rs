@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::collector::{CollectedDataContainer, Collector};
-use crate::error::{Error, FailedTest, Result, TestResult};
+use crate::error::{FailedTest, Result, TestResult};
 use crate::file::list_directories;
 use crate::manifest::ManifestHandle;
 use crate::namespace::NamespaceHandle;
@@ -64,6 +64,25 @@ async fn run_step(
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
     manifests.append(&mut these_manifests);
+
+    for delete in &step.delete {
+        match delete {
+            ApplySpec::File { file } => {
+                let path = dirname.join(file);
+                ManifestHandle::new_from_file(client.clone(), path, &namespace)
+                    .await?
+                    .delete()
+                    .await?
+            }
+            ApplySpec::Dir { dir } => {
+                let path = dirname.join(dir);
+                ManifestHandle::new_from_dir(client.clone(), path, &namespace)
+                    .await?
+                    .delete()
+                    .await?
+            }
+        }
+    }
 
     if step.wait.len() > 0 {
         wait_for_all(&step.wait, collected_data.clone()).await?;
@@ -166,7 +185,7 @@ pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
     env::set_current_dir(&dirname)?;
     let test_dirs = list_directories(".")?;
-    let mut results = run_test_multiple_dir(client, test_dirs).await?;
+    let results = run_test_multiple_dir(client, test_dirs).await?;
     //results.sort_by(|lhs, rhs| lhs.is_ok() < rhs.is_ok());
     for result in results {
         log_result(&result);

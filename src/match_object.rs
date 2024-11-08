@@ -40,8 +40,8 @@ pub fn contains(input: &Value, compare: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use rstest::rstest;
+    use serde_json::json;
 
     #[rstest]
     #[case(
@@ -266,11 +266,7 @@ mod tests {
         }),
         false
     )]
-    fn test_contains(
-        #[case] input: Value,
-        #[case] compare: Value,
-        #[case] expected: bool,
-    ) {
+    fn test_contains(#[case] input: Value, #[case] compare: Value, #[case] expected: bool) {
         let result = contains(&input, &compare);
         assert_eq!(result, expected);
     }

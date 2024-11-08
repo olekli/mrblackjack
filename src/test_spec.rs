@@ -1,16 +1,14 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    error::{Result},
-};
+use crate::error::Result;
+use schemars::{schema::RootSchema, schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::{
     collections::{BTreeMap, HashSet},
     fs::File,
 };
-use schemars::{JsonSchema, schema_for, schema::RootSchema};
-use std::path::{Path, PathBuf};
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TestSpec {
@@ -118,23 +116,23 @@ impl std::fmt::Display for Expr {
             Expr::AndExpr { and } => {
                 let exprs: Vec<String> = and.iter().map(|e| format!("{}", e)).collect();
                 write!(f, "AND({})", exprs.join(", "))
-            },
+            }
             Expr::OrExpr { or } => {
                 let exprs: Vec<String> = or.iter().map(|e| format!("{}", e)).collect();
                 write!(f, "OR({})", exprs.join(", "))
-            },
+            }
             Expr::NotExpr { not } => {
                 write!(f, "NOT({})", not)
-            },
+            }
             Expr::SizeExpr { size } => {
                 write!(f, "size == {}", size)
-            },
+            }
             Expr::OneExpr { one } => {
                 write!(f, "ANY({})", one)
-            },
+            }
             Expr::AllExpr { all } => {
                 write!(f, "ALL({})", all)
-            },
+            }
         }
     }
 }

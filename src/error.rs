@@ -1,7 +1,7 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::test_spec::{Expr};
+use crate::test_spec::Expr;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -9,7 +9,11 @@ pub enum Error {
     FileError(#[from] std::io::Error),
 
     #[error("Discovery error: {group}/{version} {kind}")]
-    DiscoveryError{group: String, version: String, kind: String},
+    DiscoveryError {
+        group: String,
+        version: String,
+        kind: String,
+    },
 
     #[error("Watcher error: {0}")]
     WatcherError(#[from] kube::runtime::watcher::Error),

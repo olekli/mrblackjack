@@ -1,9 +1,9 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::error::{Result};
-use std::path::{Path, PathBuf};
+use crate::error::Result;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 pub fn read_yaml_files(dirname: PathBuf) -> Result<String> {
     let dir = Path::new(&dirname);
@@ -13,7 +13,8 @@ pub fn read_yaml_files(dirname: PathBuf) -> Result<String> {
         .filter(|e| {
             let path = e.path();
             path.is_file()
-                && path.extension()
+                && path
+                    .extension()
                     .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("yaml"))
                     .unwrap_or(false)
         })
@@ -48,6 +49,5 @@ pub fn list_directories(dirname: &str) -> Result<Vec<PathBuf>> {
             let path = e.path();
             path.is_dir().then(|| root.join(path))
         })
-        .collect()
-    )
+        .collect())
 }

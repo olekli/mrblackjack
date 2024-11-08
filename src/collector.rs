@@ -4,7 +4,7 @@
 use crate::{
     error::Error,
     error::Result,
-    test_spec::{BucketOperation, BucketSpec, WatchSpec},
+    test_spec::{BucketOperation, WatchSpec},
 };
 use futures::StreamExt;
 use kube::{
