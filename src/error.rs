@@ -39,6 +39,9 @@ pub enum Error {
     #[error("Path encoding error")]
     PathEncodingError,
 
+    #[error("SIGINT")]
+    SIGINT,
+
     #[error("Other error: {0}")]
     Other(String),
 }

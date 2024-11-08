@@ -1,0 +1,62 @@
+name: test-label-selector
+steps:
+  - name: nginx-deployment
+    watch:
+      - name: nginx-pods
+        group: ''
+        version: v1
+        kind: Pod
+        labels:
+          app: nginx
+      - name: nginx-pods-foo
+        group: ''
+        version: v1
+        kind: Pod
+        labels:
+          app: nginx-foo
+    apply:
+      - file: nginx-deployment.yaml
+      - file: nginx-deployment-foo.yaml
+    wait:
+      - target: nginx-pods
+        timeout: 10
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+      - target: nginx-pods-foo
+        timeout: 10
+        condition:
+          and:
+            - size: 1
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+  - name: assert
+    wait:
+      - target: nginx-pods
+        timeout: 10
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+      - target: nginx-pods-foo
+        timeout: 10
+        condition:
+          and:
+            - size: 1
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"

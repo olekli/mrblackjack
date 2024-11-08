@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::collector::{Bucket, CollectedDataContainer, Collector};
-use crate::error::{FailedTest, Result, TestResult};
+use crate::error::{Error, FailedTest, Result, TestResult};
 use crate::file::{list_directories, list_files};
 use crate::manifest::ManifestHandle;
 use crate::namespace::NamespaceHandle;
@@ -92,7 +92,16 @@ async fn run_step(
     }
 
     if step.wait.len() > 0 {
-        wait_for_all(&step.wait, collected_data.clone()).await?;
+        let wait = wait_for_all(&step.wait, collected_data.clone());
+        tokio::select! {
+            result = wait => {
+                return result;
+            }
+            _ = tokio::signal::ctrl_c() => {
+                log::info!("SIGINT received, cleaning up...");
+                return Err(Error::SIGINT);
+            }
+        }
     }
 
     Ok(())
