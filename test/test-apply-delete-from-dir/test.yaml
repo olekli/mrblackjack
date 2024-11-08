@@ -1,4 +1,4 @@
-name: test-apply-from-dir
+name: test-apply-delete-from-dir
 steps:
   - name: apply nginx-deployment
     watch:
@@ -23,7 +23,15 @@ steps:
                   conditions:
                     - type: Ready
                       status: "True"
+  - name: delete nginx-deployment
+    delete:
+      - dir: nginx
+    wait:
+      - target: nginx-pods
+        timeout: 60
+        condition:
+          size: 0
       - target: nginx-svc
         timeout: 60
         condition:
-          size: 1
+          size: 0

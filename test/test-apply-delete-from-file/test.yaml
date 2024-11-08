@@ -1,4 +1,4 @@
-name: test-apply-from-dir
+name: test-apply-delete-from-file
 steps:
   - name: apply nginx-deployment
     watch:
@@ -6,12 +6,8 @@ steps:
         group: ''
         version: v1
         kind: Pod
-      - name: nginx-svc
-        group: ''
-        version: v1
-        kind: Service
     apply:
-      - dir: nginx
+      - file: nginx-deployment.yaml
     wait:
       - target: nginx-pods
         timeout: 60
@@ -23,7 +19,11 @@ steps:
                   conditions:
                     - type: Ready
                       status: "True"
-      - target: nginx-svc
+  - name: delete nginx-deployment
+    delete:
+      - file: nginx-deployment.yaml
+    wait:
+      - target: nginx-pods
         timeout: 60
         condition:
-          size: 1
+          size: 0

@@ -1,4 +1,4 @@
-name: test-1
+name: test-apply-from-file
 steps:
   - name: nginx-deployment
     watch:
