@@ -1,11 +1,16 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use kube::api::{Api, DynamicObject, Patch, PatchParams, DeleteParams};
-use kube::{Client, discovery::{Discovery, Scope}, ResourceExt, core::GroupVersionKind};
+use crate::error::{Error, Result};
+use crate::file::read_yaml_files;
+use kube::api::{Api, DeleteParams, DynamicObject, Patch, PatchParams};
+use kube::{
+    core::GroupVersionKind,
+    discovery::{Discovery, Scope},
+    Client, ResourceExt,
+};
 use serde::Deserialize;
 use serde_yaml::Value;
-use crate::error::{Error, Result};
 use std::fs;
 
 #[derive(Debug)]
@@ -14,8 +19,11 @@ pub struct ManifestHandle {
 }
 
 impl ManifestHandle {
-    pub async fn new(client: Client, filename: &str, namespace_override: &str) -> Result<Self> {
-        let yaml_str = fs::read_to_string(filename)?;
+    pub async fn new_from_data(
+        client: Client,
+        yaml_str: String,
+        namespace_override: &str,
+    ) -> Result<Self> {
         let mut manifest_documents = Vec::new();
         for document in serde_yaml::Deserializer::from_str(&yaml_str) {
             let yaml_value: Value = Value::deserialize(document)?;
@@ -23,17 +31,27 @@ impl ManifestHandle {
         }
 
         let discovery = Discovery::new(client.clone()).run().await?;
-        let prepared_resources = Self::prepare_resources(
-            &client,
-            &discovery,
-            &manifest_documents,
-            namespace_override,
-        )
-        .await?;
+        let prepared_resources =
+            Self::prepare_resources(&client, &discovery, &manifest_documents, namespace_override)
+                .await?;
 
-        Ok(ManifestHandle {
-            prepared_resources,
-        })
+        Ok(ManifestHandle { prepared_resources })
+    }
+
+    pub async fn new_from_file(
+        client: Client,
+        filename: &str,
+        namespace_override: &str,
+    ) -> Result<Self> {
+        ManifestHandle::new_from_data(client, fs::read_to_string(filename)?, namespace_override).await
+    }
+
+    pub async fn new_from_dir(
+        client: Client,
+        dirname: &str,
+        namespace_override: &str,
+    ) -> Result<Self> {
+        ManifestHandle::new_from_data(client, read_yaml_files(dirname)?, namespace_override).await
     }
 
     async fn prepare_resources(
@@ -101,7 +119,12 @@ impl ManifestHandle {
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
 
-            log::debug!("Applying resource: kind={}, name={}, namespace={}", kind, name, namespace);
+            log::debug!(
+                "Applying resource: kind={}, name={}, namespace={}",
+                kind,
+                name,
+                namespace
+            );
 
             let patch_params = PatchParams::apply("blackjack").force();
             let patch = Patch::Apply(dynamic_obj);
@@ -118,12 +141,17 @@ impl ManifestHandle {
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
 
-            log::debug!("Deleting resource: kind={}, name={}, namespace={}", kind, name, namespace);
+            log::debug!(
+                "Deleting resource: kind={}, name={}, namespace={}",
+                kind,
+                name,
+                namespace
+            );
 
             let delete_params = DeleteParams::default();
             match api.delete(&dynamic_obj.name_any(), &delete_params).await {
-                Ok(_) => { }
-                Err(kube::Error::Api(ae)) if ae.code == 404 => { }
+                Ok(_) => {}
+                Err(kube::Error::Api(ae)) if ae.code == 404 => {}
                 Err(e) => return Err(Error::from(e)),
             }
         }

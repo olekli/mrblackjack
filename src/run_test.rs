@@ -42,10 +42,10 @@ async fn run_steps(
         let mut these_manifests = join_all(step.apply.iter().cloned().map(|apply| async {
             match apply {
                 ApplySpec::File { file } => {
-                    ManifestHandle::new(client.clone(), &file, &namespace).await
+                    ManifestHandle::new_from_file(client.clone(), &file, &namespace).await
                 }
                 ApplySpec::Dir { dir } => {
-                    ManifestHandle::new(client.clone(), &dir, &namespace).await
+                    ManifestHandle::new_from_dir(client.clone(), &dir, &namespace).await
                 }
             }
         }))

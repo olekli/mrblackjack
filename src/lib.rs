@@ -10,3 +10,4 @@ pub mod manifest;
 pub mod namespace;
 pub mod run_test;
 pub mod wait;
+pub mod file;
