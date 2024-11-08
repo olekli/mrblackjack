@@ -12,7 +12,7 @@ fn check_spec_against_data(
     wait_spec: &WaitSpec,
     collected_data: &CollectedData,
 ) -> std::result::Result<(), AssertDiagnostic> {
-    let default = Bucket::new();
+    let default: Bucket = Default::default();
     let data = collected_data
         .get(&wait_spec.target)
         .or_else(|| Some(&default))

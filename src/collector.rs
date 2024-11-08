@@ -31,14 +31,23 @@ pub struct Bucket {
     pub data: HashMap<String, serde_json::Value>,
 }
 
-impl Bucket {
-    pub fn new() -> Self {
+impl Default for Bucket {
+    fn default() -> Self {
         Bucket {
             allowed_operations: HashSet::from([
                 BucketOperation::Create,
                 BucketOperation::Patch,
                 BucketOperation::Delete,
             ]),
+            data: HashMap::new(),
+        }
+    }
+}
+
+impl Bucket {
+    pub fn new(allowed_operations: HashSet<BucketOperation>) -> Self {
+        Bucket {
+            allowed_operations,
             data: HashMap::new(),
         }
     }
@@ -180,7 +189,7 @@ impl Collector {
                                     let bucket = data
                                         .deref_mut()
                                         .entry(spec.name.clone())
-                                        .or_insert_with(Bucket::new);
+                                        .or_insert_with(Default::default);
                                     if (!bucket.data.contains_key(&uid)
                                         && bucket
                                             .allowed_operations

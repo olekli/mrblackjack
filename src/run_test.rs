@@ -1,7 +1,7 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::collector::{CollectedDataContainer, Collector};
+use crate::collector::{CollectedDataContainer, Collector, Bucket};
 use crate::error::{FailedTest, Result, TestResult};
 use crate::file::list_directories;
 use crate::manifest::ManifestHandle;
@@ -43,6 +43,14 @@ async fn run_step(
         )
         .await?,
     );
+
+    for bucket_spec in &step.bucket {
+        let mut buckets = collected_data.write().await;
+        buckets
+            .entry(bucket_spec.name.clone())
+            .and_modify(|bucket| bucket.allowed_operations = bucket_spec.operations.clone())
+            .or_insert_with(|| Bucket::new(bucket_spec.operations.clone()));
+    }
 
     let mut these_manifests = join_all(step.apply.iter().cloned().map(|apply| async {
         match apply {
