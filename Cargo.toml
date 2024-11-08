@@ -3,6 +3,12 @@ name = "mrblackjack"
 version = "0.1.0"
 authors = ["Ole Kliemann <mail@olekliemann.de>"]
 edition = "2021"
+license = "Apache-2.0"
+description = "Simple framework for testing Kubernetes operators"
+repository = "https://github.com/olekli/mrblackjack"
+readme = "README.md"
+keywords = ["kubernetes", "end-to-end-testing", "testing", "operator"]
+categories = ["command-line-utilities", "development-tools::testing"]
 
 [dependencies]
 env_logger = "0.11.5"
