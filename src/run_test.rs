@@ -20,8 +20,12 @@ fn make_namespace(name: &String) -> String {
     format!(
         "{}-{}-{}",
         truncated_name,
-        random_word::gen_len(8, random_word::Lang::En).or_else(|| Some("")).unwrap(),
-        random_word::gen_len(8, random_word::Lang::En).or_else(|| Some("")).unwrap()
+        random_word::gen_len(8, random_word::Lang::En)
+            .or_else(|| Some(""))
+            .unwrap(),
+        random_word::gen_len(8, random_word::Lang::En)
+            .or_else(|| Some(""))
+            .unwrap()
     )
 }
 
@@ -174,19 +178,28 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     result
 }
 
-async fn run_all_tests(client: Client, test_specs: Vec<TestSpec>) -> Result<Vec<TestResult>> {
-    let mut set = JoinSet::new();
-    for test_spec in test_specs {
-        let client = client.clone();
-        set.spawn(async move { run_test(client, test_spec).await });
+async fn run_all_tests(
+    client: Client,
+    test_specs: Vec<TestSpec>,
+    parallel: u8,
+) -> Result<Vec<TestResult>> {
+    let mut results: Vec<TestResult> = vec![];
+    for chunk in test_specs.chunks(parallel.into()) {
+        let mut set = JoinSet::new();
+        for test_spec in chunk {
+            let client = client.clone();
+            let test_spec = test_spec.clone();
+            set.spawn(async move { run_test(client, test_spec).await });
+        }
+        results.append(&mut set.join_all().await);
     }
-    Ok(set.join_all().await)
+    Ok(results)
 }
 
-pub async fn run_test_suite(dirname: &Path) -> Result<()> {
+pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
     let client = Client::try_default().await?;
     let test_specs = discover_tests(&dirname.to_path_buf())?;
-    let results = run_all_tests(client, test_specs).await?;
+    let results = run_all_tests(client, test_specs, parallel).await?;
     //results.sort_by(|lhs, rhs| lhs.is_ok() < rhs.is_ok());
     for result in results {
         log_result(&result);

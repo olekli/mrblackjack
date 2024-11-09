@@ -11,6 +11,9 @@ use std::path::Path;
 #[derive(Parser)] // requires `derive` feature
 #[command(version, about, long_about = None)]
 struct Cli {
+    #[arg(short, long, default_value_t = 4)]
+    parallel: u8,
+
     #[arg()]
     test_dir: String,
 }
@@ -23,5 +26,5 @@ async fn main() -> Result<()> {
 
     let test_dir = Path::new(&args.test_dir);
 
-    run_test_suite(test_dir).await
+    run_test_suite(test_dir, args.parallel).await
 }
