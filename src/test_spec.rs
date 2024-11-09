@@ -45,6 +45,8 @@ pub struct StepSpec {
     #[serde(default)]
     pub delete: Vec<ApplySpec>,
     #[serde(default)]
+    pub sleep: u16,
+    #[serde(default)]
     pub wait: Vec<WaitSpec>,
     #[serde(default)]
     pub assert: Vec<AssertSpec>,
