@@ -30,6 +30,8 @@ Each `step` can have an `apply` list specifying files containing manifests to ap
 
 Each `step` can have a `delete` list specifying files containing manifests to delete from the cluster.
 
+Each `step` can have a `sleep` value specifying a number of seconds to wait unconditionally after all `apply`s and `delete`s.
+
 Each `step` can have a `wait` list specifying `condition`s to await in a `target`ed bucket of watched resources.
 
 For examples, please see the tests in `test/`.

@@ -1,0 +1,49 @@
+name: test-sleep
+steps:
+  - name: nginx-deployment
+    watch:
+      - name: nginx-pods
+        group: ''
+        version: v1
+        kind: Pod
+    apply:
+      - file: nginx-deployment.yaml
+    wait:
+      - target: nginx-pods
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+  - name: patch deployment
+    bucket:
+      - name: nginx-pods
+        operations:
+          - delete
+    watch:
+      - name: nginx-pods-patched
+        group: ''
+        version: v1
+        kind: Pod
+    apply:
+      - file: nginx-deployment-patch.yaml
+    sleep: 5
+    wait:
+      - target: nginx-pods
+        timeout: 60
+        condition:
+            size: 0
+      - target: nginx-pods-patched
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"

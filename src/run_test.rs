@@ -13,6 +13,7 @@ use futures::future::join_all;
 use kube::Client;
 use std::path::{Path, PathBuf};
 use tokio::task::JoinSet;
+use tokio::time::{sleep, Duration};
 
 fn make_namespace(name: &String) -> String {
     let mut truncated_name = name.clone();
@@ -104,6 +105,10 @@ async fn run_step(
                     .await?
             }
         }
+    }
+
+    if step.sleep > 0 {
+        sleep(Duration::from_secs(step.sleep.into())).await;
     }
 
     if step.wait.len() > 0 {
