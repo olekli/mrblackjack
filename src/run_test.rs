@@ -14,12 +14,14 @@ use kube::Client;
 use std::path::{Path, PathBuf};
 use tokio::task::JoinSet;
 
-fn make_namespace(id: &String) -> String {
+fn make_namespace(name: &String) -> String {
+    let mut truncated_name = name.clone();
+    truncated_name.truncate(32);
     format!(
         "{}-{}-{}",
-        id.clone(),
-        random_word::gen(random_word::Lang::En),
-        random_word::gen(random_word::Lang::En)
+        truncated_name,
+        random_word::gen_len(8, random_word::Lang::En).or_else(|| Some("")).unwrap(),
+        random_word::gen_len(8, random_word::Lang::En).or_else(|| Some("")).unwrap()
     )
 }
 
