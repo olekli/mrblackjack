@@ -4,6 +4,7 @@
 use crate::error::Result;
 use schemars::{schema::RootSchema, schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -12,6 +13,7 @@ use std::{
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TestSpec {
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub steps: Vec<StepSpec>,
@@ -24,6 +26,24 @@ impl TestSpec {
         let path = dirname.join(Path::new("test.yaml"));
         let file = File::open(path)?;
         let mut testspec: TestSpec = serde_yaml::from_reader(file)?;
+        if testspec.name == "" {
+            let mut it = dirname.components();
+            let n2 = it.next_back().map_or_else(
+                || "".to_string(),
+                |x| {
+                    let x: &OsStr = x.as_ref();
+                    x.to_str().unwrap_or_default().to_string()
+                },
+            );
+            let n1 = it.next_back().map_or_else(
+                || "".to_string(),
+                |x| {
+                    let x: &OsStr = x.as_ref();
+                    x.to_str().unwrap_or_default().to_string()
+                },
+            );
+            testspec.name = format!("{n1}-{n2}");
+        }
         testspec.dir = dirname;
         Ok(testspec)
     }

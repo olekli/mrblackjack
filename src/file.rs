@@ -47,7 +47,6 @@ pub fn list_directories(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
         .filter_map(|res| res.ok())
         .filter_map(|e| {
             let path = e.path();
-            //    path.is_dir().then(|| root.join(path))
             path.is_dir().then(|| path)
         })
         .collect())
