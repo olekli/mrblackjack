@@ -1,0 +1,21 @@
+name: this-is-a-very-long-test-name-that-will-have-to-be-shortened
+steps:
+  - name: nginx-deployment
+    watch:
+      - name: nginx-pods
+        group: ''
+        version: v1
+        kind: Pod
+    apply:
+      - file: nginx-deployment.yaml
+    wait:
+      - target: nginx-pods
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
