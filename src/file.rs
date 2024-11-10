@@ -57,7 +57,7 @@ pub async fn list_files(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
         if path.is_file() {
-            result.push(root.join(path));
+            result.push(path);
         }
     }
     Ok(result)
