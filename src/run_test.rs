@@ -198,14 +198,20 @@ async fn run_all_tests(
     parallel: u8,
 ) -> Result<Vec<TestResult>> {
     let mut results: Vec<TestResult> = vec![];
-    for chunk in test_specs.chunks(parallel.into()) {
-        let mut set = JoinSet::new();
-        for test_spec in chunk {
+    let mut tasks = JoinSet::new();
+    let mut it = test_specs.into_iter();
+    let mut next = it.next();
+    loop {
+        while next.is_some() && (tasks.len() < parallel.into()) {
             let client = client.clone();
-            let test_spec = test_spec.clone();
-            set.spawn(async move { run_test(client, test_spec).await });
+            tasks.spawn(async move { run_test(client, next.unwrap()).await });
+            next = it.next();
         }
-        results.append(&mut set.join_all().await);
+        if let Some(result) = tasks.join_next().await {
+            results.push(result.map_err(|err| Error::JoinError(err))?);
+        } else {
+            break;
+        }
     }
 
     Ok(results)
@@ -218,7 +224,6 @@ pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
         return Err(Error::NoTestsFoundError);
     }
     let results = run_all_tests(client, test_specs, parallel).await?;
-    //results.sort_by(|lhs, rhs| lhs.is_ok() < rhs.is_ok());
     for result in results {
         log_result(&result);
     }
