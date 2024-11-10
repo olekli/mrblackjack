@@ -57,7 +57,11 @@ impl ManifestHandle {
         dirname: PathBuf,
         namespace_override: &str,
     ) -> Result<Self> {
-        ManifestHandle::new_from_data(client, read_yaml_files(dirname).await?, namespace_override)
+        log::debug!("new_from_dir");
+        let manifest_data_ = read_yaml_files(dirname).await;
+        log::debug!("got manifest data: {}", manifest_data_.is_ok());
+        let manifest_data = manifest_data_?;
+        ManifestHandle::new_from_data(client, manifest_data, namespace_override)
             .await
     }
 
@@ -147,6 +151,7 @@ impl ManifestHandle {
     }
 
     pub async fn delete(&self) -> Result<()> {
+        log::debug!("manifest.delete");
         for (api, dynamic_obj) in &self.prepared_resources {
             let kind = dynamic_obj.types.clone().unwrap_or_default().kind;
             let name = dynamic_obj.name_any();

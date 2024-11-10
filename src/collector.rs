@@ -266,6 +266,7 @@ impl Collector {
         };
 
         for uid in uids {
+            log::debug!("Removing finalizer for {uid}");
             let resource = {
                 let data = self.collected_data.read().await;
                 data.values()
@@ -273,6 +274,7 @@ impl Collector {
                     .next()
                     .cloned()
             };
+            log::debug!("resource pulled from data");
 
             if let Some(resource_value) = resource {
                 let obj: DynamicObject = serde_json::from_value(resource_value)?;
@@ -314,6 +316,7 @@ impl Collector {
                     }
                 });
                 let patch_params = PatchParams::default();
+                log::debug!("calling API");
                 match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
                     Ok(_) => log::debug!("Removed finalizer from '{}'", name),
                     Err(e) => log::warn!("Failed to remove finalizer from '{}': {}", name, e),
@@ -331,9 +334,13 @@ impl Collector {
 
         self.token.cancel();
         let join_set = std::mem::take(&mut self.join_set);
+        log::debug!("joining all watcher");
         let results = join_set.join_all().await;
+        log::debug!("starting finalizer cleanup");
         let _ = self.cleanup_finalizers().await;
+        log::debug!("finalizer cleanup done");
         let errors: Vec<Error> = results.into_iter().filter_map(|res| res.err()).collect();
+        log::debug!("num errors: {}", errors.len());
         match errors.len() {
             0 => Ok(()),
             1 => Err(errors.into_iter().next().unwrap()),

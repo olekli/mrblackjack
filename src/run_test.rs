@@ -77,6 +77,7 @@ async fn run_step(
     .await
     .into_iter()
     .collect::<Result<Vec<ManifestHandle>>>()?;
+    log::debug!("Applying all manifests");
     join_all(these_manifests.iter().map(|manifest| manifest.apply()))
         .await
         .into_iter()
@@ -169,6 +170,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
         &collected_data,
     )
     .await;
+    log::debug!("step returned with success: {}", result.is_ok());
 
     join_all(collectors.iter_mut().map(|collector| collector.stop()))
         .await
@@ -184,6 +186,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
             log::warn!("Cleanup: {error:?}");
         });
 
+    log::debug!("cleanup done");
     result
 }
 

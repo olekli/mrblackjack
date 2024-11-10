@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub async fn read_yaml_files(dirname: PathBuf) -> Result<String> {
+    log::debug!("read_yaml_files: {dirname:?}");
     let mut combined = String::new();
     let mut entries: Vec<_> = list_files(&dirname)
         .await?
@@ -18,6 +19,8 @@ pub async fn read_yaml_files(dirname: PathBuf) -> Result<String> {
         .collect();
 
     entries.sort();
+
+    log::debug!("entries: {entries:?}");
 
     let mut first = true;
 
@@ -34,6 +37,7 @@ pub async fn read_yaml_files(dirname: PathBuf) -> Result<String> {
         combined.push('\n');
     }
 
+    log::debug!("returning: ...");
     Ok(combined)
 }
 
@@ -51,14 +55,17 @@ pub async fn list_directories(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
 }
 
 pub async fn list_files(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
+    log::debug!("list_files: {dirname:?}");
     let root = Path::new(dirname);
     let mut dir = fs::read_dir(root).await?;
     let mut result: Vec<PathBuf> = vec![];
     while let Some(entry) = dir.next_entry().await? {
+        log::debug!("found: {dirname:?}");
         let path = entry.path();
         if path.is_file() {
             result.push(path);
         }
     }
+    log::debug!("returning: {result:?}");
     Ok(result)
 }
