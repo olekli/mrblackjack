@@ -13,7 +13,7 @@ fn check_spec_against_data(
     collected_data: &CollectedData,
 ) -> std::result::Result<(), AssertDiagnostic> {
     let default: Bucket = Default::default();
-    let data = collected_data
+    let data = collected_data.buckets
         .get(&wait_spec.target)
         .or_else(|| Some(&default))
         .unwrap()
@@ -35,7 +35,7 @@ pub async fn wait_for_all(
 
     log::debug!("Waiting for {} conditions", waits.len());
     let result = loop {
-        let data = collected_data.read().await;
+        let data = collected_data.lock().await;
 
         let _waits = waits.clone();
         let result = _waits

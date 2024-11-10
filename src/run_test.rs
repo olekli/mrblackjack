@@ -44,17 +44,17 @@ async fn run_step(
     collectors.push(
         Collector::new(
             client.clone(),
-            collected_data.clone(),
             namespace.clone(),
             step.watch.clone(),
+            collected_data.clone(),
         )
         .await?,
     );
 
     log::debug!("Setting buckets");
     for bucket_spec in &step.bucket {
-        let mut buckets = collected_data.write().await;
-        buckets
+        let mut data = collected_data.lock().await;
+        (*data).buckets
             .entry(bucket_spec.name.clone())
             .and_modify(|bucket| bucket.allowed_operations = bucket_spec.operations.clone())
             .or_insert_with(|| Bucket::new(bucket_spec.operations.clone()));
@@ -164,7 +164,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     let mut collectors = Vec::<Collector>::new();
 
     let result = run_steps(
-        client,
+        client.clone(),
         &namespace,
         &test_spec,
         &mut manifests,
@@ -191,6 +191,12 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     if cleanup.is_err() {
         log::warn!("Errors during cleanup: {:?}", cleanup.unwrap_err());
     }
+    let data = collected_data.lock().await;
+    (*data).cleanup(client).await.map_err(|err| FailedTest {
+        test_name: test_spec.name.clone(),
+        step_name: "".to_string(),
+        failure: err,
+    })?;
 
     log::debug!("cleanup done");
     result

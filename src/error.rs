@@ -54,6 +54,9 @@ pub enum Error {
     #[error("No tests found")]
     NoTestsFoundError,
 
+    #[error("No UID?!")]
+    NoUidError,
+
     #[error("Other error: {0}")]
     Other(String),
 }

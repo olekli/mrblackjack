@@ -9,7 +9,7 @@ use crate::{
 use futures::StreamExt;
 use kube::{
     api::{DynamicObject, Patch, PatchParams},
-    core::{GroupVersionKind, TypeMeta},
+    core::{ApiResource, GroupVersionKind, TypeMeta},
     discovery::{Discovery, Scope},
     runtime::watcher,
     runtime::watcher::{Event, InitialListStrategy},
@@ -18,9 +18,8 @@ use kube::{
 use serde_json;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
-use std::ops::DerefMut;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -53,31 +52,126 @@ impl Bucket {
     }
 }
 
-pub type CollectedData = HashMap<String, Bucket>;
-pub type CollectedDataContainer = Arc<RwLock<CollectedData>>;
+pub type Buckets = HashMap<String, Bucket>;
+
+pub struct CollectedData {
+    pub buckets: Buckets,
+}
+pub type CollectedDataContainer = Arc<Mutex<CollectedData>>;
+
+impl CollectedData {
+    pub fn new() -> Self {
+        CollectedData {
+            buckets: HashMap::new(),
+        }
+    }
+
+    pub fn contains(&self, uid: &str) -> bool {
+        for (_, bucket) in &self.buckets {
+            if bucket.data.contains_key(uid) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub async fn cleanup(&self, client: Client) -> Result<()> {
+        let uids: Vec<String> = {
+            self.buckets.iter()
+                .flat_map(|(_, bucket)| bucket.data.iter())
+                .map(|(uid, _)| uid.clone())
+                .collect()
+        };
+
+        let discovery = Discovery::new(client.clone()).run().await?;
+        for uid in uids {
+            log::debug!("Removing finalizer for {uid}");
+            let resource = {
+                self.buckets.values()
+                    .flat_map(|bucket| bucket.data.get(&uid))
+                    .next()
+                    .cloned()
+            };
+
+            if let Some(resource_value) = resource {
+                let obj: DynamicObject = serde_json::from_value(resource_value)?;
+                let TypeMeta { api_version, kind } = obj.types.clone().unwrap_or_default();
+                let name = obj.name_any();
+                let namespace = obj.namespace().unwrap_or_default();
+
+                let group_version = api_version.split('/').collect::<Vec<&str>>();
+                let (group, version) = if group_version.len() == 2 {
+                    (group_version[0], group_version[1])
+                } else {
+                    ("", group_version[0])
+                };
+
+                let gvk = GroupVersionKind {
+                    group: group.to_string(),
+                    version: version.to_string(),
+                    kind: kind.clone(),
+                };
+
+                let (ar, caps) =
+                    discovery
+                        .resolve_gvk(&gvk)
+                        .ok_or_else(|| Error::DiscoveryError {
+                            group: gvk.group,
+                            version: gvk.version,
+                            kind: gvk.kind,
+                        })?;
+
+                let api: Api<DynamicObject> = if caps.scope == Scope::Namespaced {
+                    Api::namespaced_with(client.clone(), &namespace, &ar)
+                } else {
+                    Api::all_with(client.clone(), &ar)
+                };
+
+                let patch = json!({
+                    "metadata": {
+                        "finalizers": null
+                    }
+                });
+                let patch_params = PatchParams::default();
+                log::debug!("calling API");
+                match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
+                    Ok(_) => log::debug!("Removed finalizer from '{}'", name),
+                    Err(e) => log::warn!("Failed to remove finalizer from '{}': {}", name, e),
+                }
+            } else {
+                log::warn!("Resource with UID '{}' not found in collected_data", uid);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+struct CollectorBrief {
+    client: Client,
+    namespace: String,
+    api_resource: ApiResource,
+    spec: WatchSpec,
+    collected_data: CollectedDataContainer,
+    token: CancellationToken,
+}
 
 pub struct Collector {
     token: CancellationToken,
-    join_set: JoinSet<Result<()>>,
-    discovery: Discovery,
-    client: Client,
-    collected_data: CollectedDataContainer,
+    tasks: JoinSet<Result<()>>,
 }
 
 impl Collector {
     pub fn new_data() -> CollectedDataContainer {
-        CollectedDataContainer::new(RwLock::new(HashMap::new()))
+        CollectedDataContainer::new(Mutex::new(CollectedData::new()))
     }
 
     pub async fn new(
         client: Client,
-        collected_data: CollectedDataContainer,
         namespace: String,
         specs: Vec<WatchSpec>,
+        collected_data: CollectedDataContainer,
     ) -> Result<Self> {
-        let token = CancellationToken::new();
-        let mut join_set = JoinSet::new();
-
         let discovery = Discovery::new(client.clone()).run().await?;
         let annotated_specs = specs.into_iter().filter_map(|spec| {
             let gvk = GroupVersionKind {
@@ -107,238 +201,34 @@ impl Collector {
             }
         });
 
-        for (ar, spec) in annotated_specs {
-            let client = client.clone();
-            let ns = namespace.clone();
-            let collected_data = Arc::clone(&collected_data);
-            let token = token.clone();
-
-            join_set.spawn(async move {
-                let api: Api<DynamicObject> = Api::namespaced_with(client.clone(), &ns, &ar);
-                let label_selector = spec
-                    .labels
-                    .as_ref()
-                    .and_then(|labels| {
-                        Some(
-                            labels
-                                .iter()
-                                .map(|(k, v)| format!("{}={}", k, v))
-                                .collect::<Vec<_>>()
-                                .join(","),
-                        )
-                    })
-                    .or_else(|| Some(String::new()))
-                    .unwrap();
-                let field_selector = spec
-                    .fields
-                    .as_ref()
-                    .and_then(|fields| {
-                        Some(
-                            fields
-                                .iter()
-                                .map(|(k, v)| format!("{}={}", k, v))
-                                .collect::<Vec<_>>()
-                                .join(","),
-                        )
-                    })
-                    .or_else(|| Some(String::new()))
-                    .unwrap();
-
-                let config = watcher::Config {
-                    label_selector: Some(label_selector),
-                    field_selector: Some(field_selector),
-                    initial_list_strategy: InitialListStrategy::ListWatch,
-                    ..watcher::Config::default()
-                };
-                let mut stream = watcher(api.clone(), config).boxed();
-
-                while let Some(event) = tokio::select! {
-                    biased;
-                    _ = token.cancelled() => {
-                        log::debug!("Watcher for id '{}' received cancellation signal.", spec.name);
-                        None
-                    }
-                    event = stream.next() => event,
-                } {
-                    match event {
-                        Ok(Event::Apply(obj)) | Ok(Event::InitApply(obj)) => {
-                            let name = obj.name_any();
-                            let uid = obj.metadata.uid.clone();
-
-                            if !obj.finalizers().contains(&FINALIZER_NAME.to_string()) {
-                                let patch = json!({
-                                    "metadata": {
-                                        "finalizers": [FINALIZER_NAME]
-                                    }
-                                });
-                                let patch_params = PatchParams::default();
-                                match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
-                                    Ok(_) => log::debug!("Added finalizer to '{}'", name),
-                                    Err(e) => {
-                                        log::debug!("Failed to add finalizer to '{}': {}", name, e)
-                                    }
-                                }
-                            }
-                            if obj.metadata.deletion_timestamp.is_some() {
-                                Self::handle_deletion(&api, obj, &collected_data).await?;
-                            } else {
-                                if let Some(uid) = uid {
-                                    let value = serde_json::to_value(&obj)
-                                        .unwrap_or_else(|_| serde_json::Value::Null);
-                                    let mut data = collected_data.write().await;
-                                    let bucket = data
-                                        .deref_mut()
-                                        .entry(spec.name.clone())
-                                        .or_insert_with(Default::default);
-                                    if (!bucket.data.contains_key(&uid)
-                                        && bucket
-                                            .allowed_operations
-                                            .contains(&BucketOperation::Create))
-                                        || (bucket.data.contains_key(&uid)
-                                            && bucket
-                                                .allowed_operations
-                                                .contains(&BucketOperation::Patch))
-                                    {
-                                        bucket.data.insert(uid, value);
-                                    }
-                                }
-                            }
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::warn!("Error watching resource for id '{}': {}", spec.name, e);
-                        }
-                    }
-                }
-
-                log::debug!("Watcher for id '{}' is terminating.", spec.name);
-
-                Ok(())
-            });
-        }
-        Ok(Collector {
-            discovery,
-            token,
-            join_set,
-            collected_data,
-            client,
-        })
-    }
-
-    async fn handle_deletion(
-        api: &Api<DynamicObject>,
-        obj: DynamicObject,
-        collected_data: &CollectedDataContainer,
-    ) -> Result<()> {
-        let name = obj.name_any();
-        let uid = obj.metadata.uid.clone();
-
-        if let Some(uid) = uid {
-            let mut data = collected_data.write().await;
-            for bucket in data.values_mut() {
-                if bucket.allowed_operations.contains(&BucketOperation::Delete) {
-                    bucket.data.remove(&uid);
-                }
-            }
-        }
-
-        let patch = json!({
-            "metadata": {
-                "finalizers": null
-            }
-        });
-        let patch_params = PatchParams::default();
-        match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
-            Ok(_) => log::debug!("Removed finalizer from '{}'", name),
-            Err(e) => log::debug!("Failed to remove finalizer from '{}': {}", name, e),
-        }
-
-        Ok(())
-    }
-
-    async fn cleanup_finalizers(&self) -> Result<()> {
-        let uids: Vec<String> = {
-            let data = self.collected_data.read().await;
-            data.iter()
-                .flat_map(|(_, bucket)| bucket.data.iter())
-                .map(|(uid, _)| uid.clone())
-                .collect()
-        };
-
-        for uid in uids {
-            log::debug!("Removing finalizer for {uid}");
-            let resource = {
-                let data = self.collected_data.read().await;
-                data.values()
-                    .flat_map(|bucket| bucket.data.get(&uid))
-                    .next()
-                    .cloned()
+        let token = CancellationToken::new();
+        let mut tasks = JoinSet::new();
+        for (api_resource, spec) in annotated_specs {
+            let brief = CollectorBrief{
+                client: client.clone(),
+                namespace: namespace.clone(),
+                collected_data: collected_data.clone(),
+                token: token.clone(),
+                api_resource,
+                spec,
             };
-            log::debug!("resource pulled from data");
 
-            if let Some(resource_value) = resource {
-                let obj: DynamicObject = serde_json::from_value(resource_value)?;
-                let TypeMeta { api_version, kind } = obj.types.clone().unwrap_or_default();
-                let name = obj.name_any();
-                let namespace = obj.namespace().unwrap_or_default();
-
-                let group_version = api_version.split('/').collect::<Vec<&str>>();
-                let (group, version) = if group_version.len() == 2 {
-                    (group_version[0], group_version[1])
-                } else {
-                    ("", group_version[0])
-                };
-
-                let gvk = GroupVersionKind {
-                    group: group.to_string(),
-                    version: version.to_string(),
-                    kind: kind.clone(),
-                };
-
-                let (ar, caps) =
-                    self.discovery
-                        .resolve_gvk(&gvk)
-                        .ok_or_else(|| Error::DiscoveryError {
-                            group: gvk.group,
-                            version: gvk.version,
-                            kind: gvk.kind,
-                        })?;
-
-                let api: Api<DynamicObject> = if caps.scope == Scope::Namespaced {
-                    Api::namespaced_with(self.client.clone(), &namespace, &ar)
-                } else {
-                    Api::all_with(self.client.clone(), &ar)
-                };
-
-                let patch = json!({
-                    "metadata": {
-                        "finalizers": null
-                    }
-                });
-                let patch_params = PatchParams::default();
-                log::debug!("calling API");
-                match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
-                    Ok(_) => log::debug!("Removed finalizer from '{}'", name),
-                    Err(e) => log::warn!("Failed to remove finalizer from '{}': {}", name, e),
-                }
-            } else {
-                log::warn!("Resource with UID '{}' not found in collected_data", uid);
-            }
+            tasks.spawn(async move { brief.start().await });
         }
 
-        Ok(())
+        Ok(Collector{
+            token,
+            tasks,
+        })
     }
 
     pub async fn stop(&mut self) -> Result<()> {
         assert!(!self.token.is_cancelled());
 
         self.token.cancel();
-        let join_set = std::mem::take(&mut self.join_set);
+        let tasks = std::mem::take(&mut self.tasks);
         log::debug!("joining all watcher");
-        let results = join_set.join_all().await;
-        log::debug!("starting finalizer cleanup");
-        let _ = self.cleanup_finalizers().await;
-        log::debug!("finalizer cleanup done");
+        let results = tasks.join_all().await;
         let errors: Vec<Error> = results.into_iter().filter_map(|res| res.err()).collect();
         log::debug!("num errors: {}", errors.len());
         match errors.len() {
@@ -346,5 +236,147 @@ impl Collector {
             1 => Err(errors.into_iter().next().unwrap()),
             _ => Err(Error::MultipleErrors(errors)),
         }
+    }
+}
+
+impl CollectorBrief {
+    async fn handle_apply(&self, api: Api<DynamicObject>, obj: DynamicObject) -> Result<()> {
+        let name = obj.name_any();
+        let uid = obj.metadata.uid.clone().unwrap();
+        let mut data = self.collected_data.lock().await;
+        let is_marked_for_deletion = obj.metadata.deletion_timestamp.is_some();
+        let mut is_stored = (*data).contains(&uid);
+        let mut has_finalizer = obj.finalizers().contains(&FINALIZER_NAME.to_string());
+        if !is_stored && !is_marked_for_deletion {
+            if !has_finalizer {
+                let patch = json!({
+                    "metadata": {
+                        "finalizers": [FINALIZER_NAME]
+                    }
+                });
+                let patch_params = PatchParams::default();
+                match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
+                    Ok(_) => {
+                        has_finalizer = true;
+                        log::debug!("Added finalizer to '{}'", name);
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to add finalizer to '{}': {}", name, e);
+                    }
+                }
+            }
+        }
+        if is_marked_for_deletion {
+            if is_stored {
+                is_stored = false;
+                for (_, bucket) in &mut (*data).buckets {
+                    if bucket.allowed_operations.contains(&BucketOperation::Delete) {
+                        bucket.data.remove(&uid);
+                    } else {
+                        is_stored = true;
+                    }
+                }
+            }
+            if has_finalizer && !is_stored {
+                let patch = json!({
+                    "metadata": {
+                        "finalizers": null
+                    }
+                });
+                let patch_params = PatchParams::default();
+                match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
+                    Ok(_) => log::debug!("Removed finalizer from '{}'", name),
+                    Err(e) => log::debug!("Failed to remove finalizer from '{}': {}", name, e),
+                }
+            }
+        } else {
+            let value = serde_json::to_value(&obj)
+                .unwrap_or_else(|_| serde_json::Value::Null);
+            let bucket = (*data).buckets
+                .entry(self.spec.name.clone())
+                .or_insert_with(Default::default);
+            if (!bucket.data.contains_key(&uid)
+                && bucket
+                    .allowed_operations
+                    .contains(&BucketOperation::Create))
+                || (bucket.data.contains_key(&uid)
+                    && bucket
+                        .allowed_operations
+                        .contains(&BucketOperation::Patch))
+            {
+                bucket.data.insert(uid, value);
+            }
+        }
+        Ok(())
+    }
+
+    async fn start(&self) -> Result<()> {
+        let api: Api<DynamicObject> = Api::namespaced_with(self.client.clone(), &self.namespace, &self.api_resource);
+        let label_selector = self.spec
+            .labels
+            .as_ref()
+            .and_then(|labels| {
+                Some(
+                    labels
+                        .iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+            })
+            .or_else(|| Some(String::new()))
+            .unwrap();
+        let field_selector = self.spec
+            .fields
+            .as_ref()
+            .and_then(|fields| {
+                Some(
+                    fields
+                        .iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+            })
+            .or_else(|| Some(String::new()))
+            .unwrap();
+
+        let config = watcher::Config {
+            label_selector: Some(label_selector),
+            field_selector: Some(field_selector),
+            initial_list_strategy: InitialListStrategy::ListWatch,
+            ..watcher::Config::default()
+        };
+        let mut stream = watcher(api.clone(), config).boxed();
+
+        while let Some(event) = tokio::select! {
+            biased;
+            _ = self.token.cancelled() => {
+                log::debug!("Watcher for id '{}' received cancellation signal.", self.spec.name);
+                None
+            }
+            event = stream.next() => event,
+        } {
+            let result = match event {
+                Ok(Event::Apply(obj)) | Ok(Event::InitApply(obj)) => {
+                    match obj.uid() {
+                        Some(_) => self.handle_apply(api.clone(), obj).await,
+                        None => Err(Error::NoUidError),
+                    }
+                }
+                Ok(_) => Ok(()),
+                Err(e) => Err(Error::WatcherError(e)),
+            };
+            match result {
+                Ok(_) => {},
+                Err(e) => {
+                    log::warn!("Error watching resource for watch '{}': {}", self.spec.name, e);
+                }
+            }
+        }
+
+        log::debug!("Watcher for id '{}' is terminating.", self.spec.name);
+
+        Ok(())
     }
 }
