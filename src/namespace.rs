@@ -54,7 +54,7 @@ impl NamespaceHandle {
         match self.api.delete(&self.namespace, &delete_params).await {
             Ok(delete_response) => {
                 if delete_response.left().is_some() {
-                    if self.wait_for_deletion(10).await? {
+                    if self.wait_for_deletion(30).await? {
                         Ok(false)
                     } else {
                         Ok(true)

@@ -26,12 +26,15 @@ impl ManifestHandle {
         namespace_override: String,
     ) -> Result<Self> {
         let mut manifest_documents = Vec::new();
+        log::debug!("deserializing manifests");
         for document in serde_yaml::Deserializer::from_str(&yaml_str) {
             let yaml_value: Value = Value::deserialize(document)?;
             manifest_documents.push(yaml_value);
         }
 
+        log::debug!("starting discovery");
         let discovery = Discovery::new(client.clone()).run().await?;
+        log::debug!("preparing resources");
         let prepared_resources =
             Self::prepare_resources(&client, &discovery, &manifest_documents, namespace_override)?;
 

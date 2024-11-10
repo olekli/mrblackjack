@@ -12,7 +12,7 @@ use crate::wait::wait_for_all;
 use futures::future::join_all;
 use kube::Client;
 use std::path::{Path, PathBuf};
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
 
 fn make_namespace(name: &String) -> String {
@@ -68,16 +68,20 @@ async fn run_step(
         match apply {
             ApplySpec::File { file } => {
                 let path = dirname.join(file);
-                log::debug!("Applying: {:?}", path);
+                log::debug!("Creating manifest: {:?}", path);
                 let handle = ManifestHandle::new_from_file(client, path, namespace).await?;
+                log::debug!("Applying manifest");
                 handle.apply().await?;
+                log::debug!("Manifest applied");
                 manifests.push(handle);
             }
             ApplySpec::Dir { dir } => {
                 let path = dirname.join(dir);
-                log::debug!("Applying: {:?}", path);
+                log::debug!("Creating manifest: {:?}", path);
                 let handle = ManifestHandle::new_from_dir(client, path, namespace).await?;
+                log::debug!("Applying manifest");
                 handle.apply().await?;
+                log::debug!("Manifest applied");
                 manifests.push(handle);
             }
         }
@@ -146,7 +150,7 @@ async fn run_steps(
     Ok(test_spec.name.clone())
 }
 
-async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
+async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<JoinHandle<()>>) {
     let namespace = make_namespace(&test_spec.name);
     log::info!(
         "Running test '{}' in namespace '{}'",
@@ -154,11 +158,14 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
         namespace
     );
     let namespace_handle = NamespaceHandle::new(client.clone(), &namespace);
-    namespace_handle.create().await.map_err(|err| FailedTest {
+    let ns = namespace_handle.create().await.map_err(|err| FailedTest {
         test_name: test_spec.name.clone(),
         step_name: "".to_string(),
         failure: err,
-    })?;
+    });
+    if ns.is_err() {
+        return (Err(ns.unwrap_err()), None);
+    }
 
     let mut manifests = Vec::<ManifestHandle>::new();
     let collected_data = Collector::new_data();
@@ -175,32 +182,27 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     .await;
     log::debug!("step returned with success: {}", result.is_ok());
 
-    log::debug!("running cleanup");
-    let mut tasks = JoinSet::new();
-    for mut collector in collectors {
-        tasks.spawn(async move { collector.stop().await });
-    }
-    for manifest in manifests {
-        tasks.spawn(async move { manifest.delete().await });
-    }
-    tasks.spawn(async move { namespace_handle.delete().await });
-    let cleanup = tasks
-        .join_all()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>();
-    if cleanup.is_err() {
-        log::warn!("Errors during cleanup: {:?}", cleanup.unwrap_err());
-    }
-    let data = collected_data.lock().await;
-    (*data).cleanup(client).await.map_err(|err| FailedTest {
-        test_name: test_spec.name.clone(),
-        step_name: "".to_string(),
-        failure: err,
-    })?;
+    log::debug!("initiating cleanup");
+    let cleanup_task = tokio::task::spawn(async move {
+        let mut results: Vec<Result<()>> = vec![];
+        for mut collector in collectors {
+            results.push(collector.stop().await);
+        }
+        {
+            let data = collected_data.lock().await;
+            results.push((*data).cleanup(client).await);
+        }
+        for manifest in manifests {
+            results.push(manifest.delete().await);
+        }
+        results.push(namespace_handle.delete().await);
+        for error in results.into_iter().filter(|r| r.is_err()) {
+            log::warn!("Errors during cleanup: {:?}", error.unwrap_err());
+        }
+    });
 
     log::debug!("cleanup done");
-    result
+    (result, Some(cleanup_task))
 }
 
 async fn run_all_tests(
@@ -212,6 +214,7 @@ async fn run_all_tests(
     let mut tasks = JoinSet::new();
     let mut it = test_specs.into_iter();
     let mut next = it.next();
+    let mut cleanup_tasks: Vec<JoinHandle<()>> = vec![];
     loop {
         while next.is_some() && (tasks.len() < parallel.into()) {
             let client = client.clone();
@@ -219,7 +222,10 @@ async fn run_all_tests(
             next = it.next();
         }
         if let Some(result) = tasks.join_next().await {
-            let test_result = result.map_err(|err| Error::JoinError(err))?;
+            let (test_result, cleanup_task) = result.map_err(|err| Error::JoinError(err))?;
+            if let Some(ct) = cleanup_task {
+                cleanup_tasks.push(ct);
+            }
             if test_result.is_ok() {
                 results.push(test_result);
             } else {
@@ -237,6 +243,10 @@ async fn run_all_tests(
         } else {
             break;
         }
+    }
+    log::info!("Waiting for all cleanup tasks");
+    for task in cleanup_tasks {
+        let _ = task.await;
     }
 
     Ok(results)
