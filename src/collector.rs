@@ -77,7 +77,8 @@ impl CollectedData {
 
     pub async fn cleanup(&self, client: Client) -> Result<()> {
         let uids: Vec<String> = {
-            self.buckets.iter()
+            self.buckets
+                .iter()
                 .flat_map(|(_, bucket)| bucket.data.iter())
                 .map(|(uid, _)| uid.clone())
                 .collect()
@@ -87,7 +88,8 @@ impl CollectedData {
         for uid in uids {
             log::debug!("Removing finalizer for {uid}");
             let resource = {
-                self.buckets.values()
+                self.buckets
+                    .values()
                     .flat_map(|bucket| bucket.data.get(&uid))
                     .next()
                     .cloned()
@@ -204,7 +206,7 @@ impl Collector {
         let token = CancellationToken::new();
         let mut tasks = JoinSet::new();
         for (api_resource, spec) in annotated_specs {
-            let brief = CollectorBrief{
+            let brief = CollectorBrief {
                 client: client.clone(),
                 namespace: namespace.clone(),
                 collected_data: collected_data.clone(),
@@ -216,10 +218,7 @@ impl Collector {
             tasks.spawn(async move { brief.start().await });
         }
 
-        Ok(Collector{
-            token,
-            tasks,
-        })
+        Ok(Collector { token, tasks })
     }
 
     pub async fn stop(&mut self) -> Result<()> {
@@ -290,19 +289,15 @@ impl CollectorBrief {
                 }
             }
         } else {
-            let value = serde_json::to_value(&obj)
-                .unwrap_or_else(|_| serde_json::Value::Null);
-            let bucket = (*data).buckets
+            let value = serde_json::to_value(&obj).unwrap_or_else(|_| serde_json::Value::Null);
+            let bucket = (*data)
+                .buckets
                 .entry(self.spec.name.clone())
                 .or_insert_with(Default::default);
             if (!bucket.data.contains_key(&uid)
-                && bucket
-                    .allowed_operations
-                    .contains(&BucketOperation::Create))
+                && bucket.allowed_operations.contains(&BucketOperation::Create))
                 || (bucket.data.contains_key(&uid)
-                    && bucket
-                        .allowed_operations
-                        .contains(&BucketOperation::Patch))
+                    && bucket.allowed_operations.contains(&BucketOperation::Patch))
             {
                 bucket.data.insert(uid, value);
             }
@@ -311,8 +306,10 @@ impl CollectorBrief {
     }
 
     async fn start(&self) -> Result<()> {
-        let api: Api<DynamicObject> = Api::namespaced_with(self.client.clone(), &self.namespace, &self.api_resource);
-        let label_selector = self.spec
+        let api: Api<DynamicObject> =
+            Api::namespaced_with(self.client.clone(), &self.namespace, &self.api_resource);
+        let label_selector = self
+            .spec
             .labels
             .as_ref()
             .and_then(|labels| {
@@ -326,7 +323,8 @@ impl CollectorBrief {
             })
             .or_else(|| Some(String::new()))
             .unwrap();
-        let field_selector = self.spec
+        let field_selector = self
+            .spec
             .fields
             .as_ref()
             .and_then(|fields| {
@@ -358,19 +356,21 @@ impl CollectorBrief {
             event = stream.next() => event,
         } {
             let result = match event {
-                Ok(Event::Apply(obj)) | Ok(Event::InitApply(obj)) => {
-                    match obj.uid() {
-                        Some(_) => self.handle_apply(api.clone(), obj).await,
-                        None => Err(Error::NoUidError),
-                    }
-                }
+                Ok(Event::Apply(obj)) | Ok(Event::InitApply(obj)) => match obj.uid() {
+                    Some(_) => self.handle_apply(api.clone(), obj).await,
+                    None => Err(Error::NoUidError),
+                },
                 Ok(_) => Ok(()),
                 Err(e) => Err(Error::WatcherError(e)),
             };
             match result {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
-                    log::warn!("Error watching resource for watch '{}': {}", self.spec.name, e);
+                    log::warn!(
+                        "Error watching resource for watch '{}': {}",
+                        self.spec.name,
+                        e
+                    );
                 }
             }
         }

@@ -54,7 +54,8 @@ async fn run_step(
     log::debug!("Setting buckets");
     for bucket_spec in &step.bucket {
         let mut data = collected_data.lock().await;
-        (*data).buckets
+        (*data)
+            .buckets
             .entry(bucket_spec.name.clone())
             .and_modify(|bucket| bucket.allowed_operations = bucket_spec.operations.clone())
             .or_insert_with(|| Bucket::new(bucket_spec.operations.clone()));

@@ -60,8 +60,7 @@ impl ManifestHandle {
         let manifest_data_ = read_yaml_files(dirname).await;
         log::debug!("got manifest data: {}", manifest_data_.is_ok());
         let manifest_data = manifest_data_?;
-        ManifestHandle::new_from_data(client, manifest_data, namespace_override)
-            .await
+        ManifestHandle::new_from_data(client, manifest_data, namespace_override).await
     }
 
     fn prepare_resources(
