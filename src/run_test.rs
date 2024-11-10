@@ -174,19 +174,19 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
     .await;
     log::debug!("step returned with success: {}", result.is_ok());
 
-    join_all(collectors.iter_mut().map(|collector| collector.stop()))
-        .await
-        .into_iter()
-        .chain(
-            join_all(manifests.iter().map(|manifest| manifest.delete()))
-                .await
-                .into_iter(),
-        )
-        .chain(std::iter::once(namespace_handle.delete().await))
-        .filter_map(|r| r.err())
-        .for_each(|error| {
-            log::warn!("Cleanup: {error:?}");
-        });
+    log::debug!("running cleanup");
+    let mut tasks = JoinSet::new();
+    for mut collector in collectors {
+        tasks.spawn(async move { collector.stop().await });
+    }
+    for manifest in manifests {
+        tasks.spawn(async move { manifest.delete().await });
+    }
+    tasks.spawn(async move { namespace_handle.delete().await });
+    let cleanup = tasks.join_all().await.into_iter().collect::<Result<Vec<_>>>();
+    if cleanup.is_err() {
+        log::warn!("Errors during cleanup: {:?}", cleanup.unwrap_err());
+    }
 
     log::debug!("cleanup done");
     result
