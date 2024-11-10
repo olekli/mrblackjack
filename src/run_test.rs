@@ -183,7 +183,11 @@ async fn run_test(client: Client, test_spec: TestSpec) -> TestResult {
         tasks.spawn(async move { manifest.delete().await });
     }
     tasks.spawn(async move { namespace_handle.delete().await });
-    let cleanup = tasks.join_all().await.into_iter().collect::<Result<Vec<_>>>();
+    let cleanup = tasks
+        .join_all()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>>>();
     if cleanup.is_err() {
         log::warn!("Errors during cleanup: {:?}", cleanup.unwrap_err());
     }
@@ -208,7 +212,21 @@ async fn run_all_tests(
             next = it.next();
         }
         if let Some(result) = tasks.join_next().await {
-            results.push(result.map_err(|err| Error::JoinError(err))?);
+            let test_result = result.map_err(|err| Error::JoinError(err))?;
+            if test_result.is_ok() {
+                results.push(test_result);
+            } else {
+                results.push(test_result);
+                while next.is_some() {
+                    let test_spec = next.unwrap();
+                    results.push(Err(FailedTest {
+                        test_name: test_spec.name,
+                        step_name: "".to_string(),
+                        failure: Error::NotExecuted,
+                    }));
+                    next = it.next();
+                }
+            }
         } else {
             break;
         }
