@@ -61,29 +61,26 @@ async fn run_step(
     }
 
     log::debug!("Applying manifests");
-    let mut these_manifests = join_all(step.apply.iter().cloned().map(|apply| async {
+    for apply in &step.apply {
+        let client = client.clone();
+        let namespace = namespace.clone();
         match apply {
             ApplySpec::File { file } => {
                 let path = dirname.join(file);
                 log::debug!("Applying: {:?}", path);
-                ManifestHandle::new_from_file(client.clone(), path, &namespace).await
+                let handle = ManifestHandle::new_from_file(client, path, namespace).await?;
+                handle.apply().await?;
+                manifests.push(handle);
             }
             ApplySpec::Dir { dir } => {
                 let path = dirname.join(dir);
                 log::debug!("Applying: {:?}", path);
-                ManifestHandle::new_from_dir(client.clone(), path, &namespace).await
+                let handle = ManifestHandle::new_from_dir(client, path, namespace).await?;
+                handle.apply().await?;
+                manifests.push(handle);
             }
         }
-    }))
-    .await
-    .into_iter()
-    .collect::<Result<Vec<ManifestHandle>>>()?;
-    log::debug!("Applying all manifests");
-    join_all(these_manifests.iter().map(|manifest| manifest.apply()))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
-    manifests.append(&mut these_manifests);
+    }
 
     log::debug!("Deleting resources");
     for delete in &step.delete {
@@ -91,7 +88,7 @@ async fn run_step(
             ApplySpec::File { file } => {
                 let path = dirname.join(file);
                 log::debug!("Deleting: {:?}", path);
-                ManifestHandle::new_from_file(client.clone(), path, &namespace)
+                ManifestHandle::new_from_file(client.clone(), path, namespace.clone())
                     .await?
                     .delete()
                     .await?
@@ -99,7 +96,7 @@ async fn run_step(
             ApplySpec::Dir { dir } => {
                 let path = dirname.join(dir);
                 log::debug!("Deleting: {:?}", path);
-                ManifestHandle::new_from_dir(client.clone(), path, &namespace)
+                ManifestHandle::new_from_dir(client.clone(), path, namespace.clone())
                     .await?
                     .delete()
                     .await?

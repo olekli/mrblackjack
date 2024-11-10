@@ -23,7 +23,7 @@ impl ManifestHandle {
     pub async fn new_from_data(
         client: Client,
         yaml_str: String,
-        namespace_override: &str,
+        namespace_override: String,
     ) -> Result<Self> {
         let mut manifest_documents = Vec::new();
         for document in serde_yaml::Deserializer::from_str(&yaml_str) {
@@ -33,8 +33,7 @@ impl ManifestHandle {
 
         let discovery = Discovery::new(client.clone()).run().await?;
         let prepared_resources =
-            Self::prepare_resources(&client, &discovery, &manifest_documents, namespace_override)
-                .await?;
+            Self::prepare_resources(&client, &discovery, &manifest_documents, namespace_override)?;
 
         Ok(ManifestHandle { prepared_resources })
     }
@@ -42,7 +41,7 @@ impl ManifestHandle {
     pub async fn new_from_file(
         client: Client,
         filename: PathBuf,
-        namespace_override: &str,
+        namespace_override: String,
     ) -> Result<Self> {
         ManifestHandle::new_from_data(
             client,
@@ -55,7 +54,7 @@ impl ManifestHandle {
     pub async fn new_from_dir(
         client: Client,
         dirname: PathBuf,
-        namespace_override: &str,
+        namespace_override: String,
     ) -> Result<Self> {
         log::debug!("new_from_dir");
         let manifest_data_ = read_yaml_files(dirname).await;
@@ -65,11 +64,11 @@ impl ManifestHandle {
             .await
     }
 
-    async fn prepare_resources(
+    fn prepare_resources(
         client: &Client,
         discovery: &Discovery,
         manifest_documents: &[Value],
-        namespace_override: &str,
+        namespace_override: String,
     ) -> Result<Vec<(Api<DynamicObject>, DynamicObject)>> {
         let mut resources = Vec::new();
 
@@ -110,13 +109,13 @@ impl ManifestHandle {
 
             let is_namespaced = caps.scope == Scope::Namespaced;
             if is_namespaced {
-                dynamic_obj.metadata.namespace = Some(namespace_override.to_string());
+                dynamic_obj.metadata.namespace = Some(namespace_override.clone());
             }
 
             let api: Api<DynamicObject> = if is_namespaced {
                 let ns = dynamic_obj
                     .namespace()
-                    .unwrap_or_else(|| namespace_override.to_string());
+                    .unwrap_or_else(|| namespace_override.clone());
                 Api::namespaced_with(client.clone(), &ns, &ar)
             } else {
                 Api::all_with(client.clone(), &ar)
