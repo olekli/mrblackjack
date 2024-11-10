@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::collector::{Bucket, CollectedDataContainer, Collector};
-use crate::error::{FailedTest, Result, TestResult};
+use crate::error::{Error, FailedTest, Result, TestResult};
 use crate::file::{list_directories, list_files};
 use crate::manifest::ManifestHandle;
 use crate::namespace::NamespaceHandle;
@@ -39,6 +39,7 @@ async fn run_step(
     collected_data: &CollectedDataContainer,
 ) -> Result<()> {
     log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
+    log::debug!("Creating collector");
     collectors.push(
         Collector::new(
             client.clone(),
@@ -49,6 +50,7 @@ async fn run_step(
         .await?,
     );
 
+    log::debug!("Setting buckets");
     for bucket_spec in &step.bucket {
         let mut buckets = collected_data.write().await;
         buckets
@@ -57,14 +59,17 @@ async fn run_step(
             .or_insert_with(|| Bucket::new(bucket_spec.operations.clone()));
     }
 
+    log::debug!("Applying manifests");
     let mut these_manifests = join_all(step.apply.iter().cloned().map(|apply| async {
         match apply {
             ApplySpec::File { file } => {
                 let path = dirname.join(file);
+                log::debug!("Applying: {:?}", path);
                 ManifestHandle::new_from_file(client.clone(), path, &namespace).await
             }
             ApplySpec::Dir { dir } => {
                 let path = dirname.join(dir);
+                log::debug!("Applying: {:?}", path);
                 ManifestHandle::new_from_dir(client.clone(), path, &namespace).await
             }
         }
@@ -78,10 +83,12 @@ async fn run_step(
         .collect::<Result<Vec<_>>>()?;
     manifests.append(&mut these_manifests);
 
+    log::debug!("Deleting resources");
     for delete in &step.delete {
         match delete {
             ApplySpec::File { file } => {
                 let path = dirname.join(file);
+                log::debug!("Deleting: {:?}", path);
                 ManifestHandle::new_from_file(client.clone(), path, &namespace)
                     .await?
                     .delete()
@@ -89,6 +96,7 @@ async fn run_step(
             }
             ApplySpec::Dir { dir } => {
                 let path = dirname.join(dir);
+                log::debug!("Deleting: {:?}", path);
                 ManifestHandle::new_from_dir(client.clone(), path, &namespace)
                     .await?
                     .delete()
@@ -101,6 +109,7 @@ async fn run_step(
         wait_for_all(&step.wait, collected_data.clone()).await?;
     }
 
+    log::debug!("Done");
     Ok(())
 }
 
@@ -193,12 +202,16 @@ async fn run_all_tests(
         }
         results.append(&mut set.join_all().await);
     }
+
     Ok(results)
 }
 
 pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
     let client = Client::try_default().await?;
-    let test_specs = discover_tests(&dirname.to_path_buf())?;
+    let test_specs = discover_tests(&dirname.to_path_buf()).await?;
+    if test_specs.len() == 0 {
+        return Err(Error::NoTestsFoundError);
+    }
     let results = run_all_tests(client, test_specs, parallel).await?;
     //results.sort_by(|lhs, rhs| lhs.is_ok() < rhs.is_ok());
     for result in results {
@@ -207,22 +220,22 @@ pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
     Ok(())
 }
 
-fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {
+async fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {
     log::trace!("Discovering tests: {dirname:?}");
-    let files = list_files(dirname)?;
+    let files = list_files(dirname).await?;
     if files
         .iter()
         .filter_map(|e| e.file_name())
         .find(|&x| x == "test.yaml")
         .is_some()
     {
-        return Ok(vec![TestSpec::new_from_file(dirname.clone())?]);
+        return Ok(vec![TestSpec::new_from_file(dirname.clone()).await?]);
     } else {
-        let dirs: Vec<PathBuf> = list_directories(dirname)?;
+        let dirs: Vec<PathBuf> = list_directories(dirname).await?;
         log::trace!("Descending into {dirs:?}");
-        let result: Vec<TestSpec> = dirs
+        let result: Vec<TestSpec> = join_all(dirs.iter().map(|dir| discover_tests(&dir)))
+            .await
             .into_iter()
-            .map(|dir| Ok(discover_tests(&dir)?))
             .collect::<Result<Vec<Vec<TestSpec>>>>()?
             .into_iter()
             .flatten()

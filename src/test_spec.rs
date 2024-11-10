@@ -4,12 +4,10 @@
 use crate::error::Result;
 use schemars::{schema::RootSchema, schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::{
-    collections::{BTreeMap, HashSet},
-    fs::File,
-};
+use tokio::fs::read_to_string;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TestSpec {
@@ -22,10 +20,10 @@ pub struct TestSpec {
 }
 
 impl TestSpec {
-    pub fn new_from_file(dirname: PathBuf) -> Result<TestSpec> {
+    pub async fn new_from_file(dirname: PathBuf) -> Result<TestSpec> {
         let path = dirname.join(Path::new("test.yaml"));
-        let file = File::open(path)?;
-        let mut testspec: TestSpec = serde_yaml::from_reader(file)?;
+        let data = read_to_string(path).await?;
+        let mut testspec: TestSpec = serde_yaml::from_str(&data)?;
         if testspec.name == "" {
             let mut it = dirname.components();
             let n2 = it.next_back().map_or_else(

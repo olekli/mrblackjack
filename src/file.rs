@@ -2,31 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::Result;
-use std::fs;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 
-pub fn read_yaml_files(dirname: PathBuf) -> Result<String> {
-    let dir = Path::new(&dirname);
+pub async fn read_yaml_files(dirname: PathBuf) -> Result<String> {
     let mut combined = String::new();
-    let mut entries: Vec<_> = fs::read_dir(dir)?
-        .filter_map(|res| res.ok())
-        .filter(|e| {
-            let path = e.path();
-            path.is_file()
-                && path
-                    .extension()
-                    .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("yaml"))
-                    .unwrap_or(false)
+    let mut entries: Vec<_> = list_files(&dirname)
+        .await?
+        .into_iter()
+        .filter(|path| {
+            path.extension()
+                .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("yaml"))
+                .unwrap_or(false)
         })
         .collect();
 
-    entries.sort_by_key(|e| e.path());
+    entries.sort();
 
     let mut first = true;
 
-    for entry in entries {
-        let path = entry.path();
-        let content = fs::read_to_string(&path)?;
+    for path in entries {
+        let content = fs::read_to_string(&path).await?;
 
         if !first {
             combined.push_str("---\n");
@@ -41,24 +37,28 @@ pub fn read_yaml_files(dirname: PathBuf) -> Result<String> {
     Ok(combined)
 }
 
-pub fn list_directories(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
+pub async fn list_directories(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
     let root = Path::new(dirname);
-    Ok(fs::read_dir(root)?
-        .filter_map(|res| res.ok())
-        .filter_map(|e| {
-            let path = e.path();
-            path.is_dir().then(|| path)
-        })
-        .collect())
+    let mut dir = fs::read_dir(root).await?;
+    let mut result: Vec<PathBuf> = vec![];
+    while let Some(entry) = dir.next_entry().await? {
+        let path = entry.path();
+        if path.is_dir() {
+            result.push(path);
+        }
+    }
+    Ok(result)
 }
 
-pub fn list_files(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
+pub async fn list_files(dirname: &PathBuf) -> Result<Vec<PathBuf>> {
     let root = Path::new(dirname);
-    Ok(fs::read_dir(root)?
-        .filter_map(|res| res.ok())
-        .filter_map(|e| {
-            let path = e.path();
-            path.is_file().then(|| root.join(path))
-        })
-        .collect())
+    let mut dir = fs::read_dir(root).await?;
+    let mut result: Vec<PathBuf> = vec![];
+    while let Some(entry) = dir.next_entry().await? {
+        let path = entry.path();
+        if path.is_file() {
+            result.push(root.join(path));
+        }
+    }
+    Ok(result)
 }

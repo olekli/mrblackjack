@@ -8,6 +8,9 @@ pub enum Error {
     #[error("File error: {0}")]
     FileError(#[from] std::io::Error),
 
+    #[error("String error")]
+    StringError,
+
     #[error("Discovery error: {group}/{version} {kind}")]
     DiscoveryError {
         group: String,
@@ -38,6 +41,18 @@ pub enum Error {
 
     #[error("Path encoding error")]
     PathEncodingError,
+
+    #[error("Join error: {0:?}")]
+    JoinError(tokio::task::JoinError),
+
+    #[error("SIGINT")]
+    SIGINT,
+
+    #[error("Not executed")]
+    NotExecuted,
+
+    #[error("No tests found")]
+    NoTestsFoundError,
 
     #[error("Other error: {0}")]
     Other(String),

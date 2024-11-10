@@ -7,7 +7,7 @@ use crate::test_spec::Expr;
 use serde_json;
 
 pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr) -> Result<(), AssertDiagnostic> {
-    log::trace!("checking {input:?} for condition {expr:?}");
+    log::trace!("checking for condition {expr:?}");
     match expr {
         Expr::OneExpr { one } => input
             .iter()
