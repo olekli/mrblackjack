@@ -45,7 +45,7 @@ pub enum Error {
     #[error("Join error: {0:?}")]
     JoinError(tokio::task::JoinError),
 
-    #[error("SIGINT")]
+    #[error("Interrupted")]
     SIGINT,
 
     #[error("Not executed")]

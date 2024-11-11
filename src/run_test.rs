@@ -170,15 +170,27 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
     let collected_data = Collector::new_data();
     let mut collectors = Vec::<Collector>::new();
 
-    let result = run_steps(
+    let test_task = run_steps(
         client.clone(),
         &namespace,
         &test_spec,
         &mut manifests,
         &mut collectors,
         &collected_data,
-    )
-    .await;
+    );
+    let sigint = tokio::signal::ctrl_c();
+    let result = tokio::select! {
+        test_result = test_task => test_result,
+        _ = sigint => {
+            log::info!("Received SIGINT, exiting...");
+            Err(FailedTest {
+                test_name: test_spec.name.clone(),
+                step_name: "".to_string(),
+                failure: Error::SIGINT,
+            })
+        }
+    };
+
     log::debug!("step returned with success: {}", result.is_ok());
 
     log::debug!("initiating cleanup");
@@ -245,7 +257,14 @@ async fn run_all_tests(
     }
     log::info!("Waiting for all cleanup tasks");
     for task in cleanup_tasks {
-        let _ = task.await;
+        let sigint = tokio::signal::ctrl_c();
+        tokio::select! {
+            _ = task => {},
+            _ = sigint => {
+                log::info!("Received another SIGINT, exiting without cleanup");
+                break;
+            }
+        };
     }
 
     Ok(results)
