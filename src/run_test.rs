@@ -9,7 +9,6 @@ use crate::namespace::NamespaceHandle;
 use crate::result_formatting::log_result;
 use crate::test_spec::{ApplySpec, StepSpec, TestSpec};
 use crate::wait::wait_for_all;
-use futures::future::join_all;
 use kube::Client;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
@@ -267,6 +266,7 @@ pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
 
 async fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {
     log::trace!("Discovering tests: {dirname:?}");
+    let mut result: Vec<TestSpec> = vec![];
     let files = list_files(dirname).await?;
     if files
         .iter()
@@ -274,17 +274,13 @@ async fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {
         .find(|&x| x == "test.yaml")
         .is_some()
     {
-        return Ok(vec![TestSpec::new_from_file(dirname.clone()).await?]);
+        result.push(TestSpec::new_from_file(dirname.clone()).await?);
     } else {
         let dirs: Vec<PathBuf> = list_directories(dirname).await?;
         log::trace!("Descending into {dirs:?}");
-        let result: Vec<TestSpec> = join_all(dirs.iter().map(|dir| discover_tests(&dir)))
-            .await
-            .into_iter()
-            .collect::<Result<Vec<Vec<TestSpec>>>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-        return Ok(result);
+        for dir in dirs {
+            result.append(&mut Box::pin(discover_tests(&dir)).await?);
+        }
     }
+    Ok(result)
 }
