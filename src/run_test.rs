@@ -1,6 +1,7 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::config::Config;
 use crate::collector::{Bucket, CollectedDataContainer, Collector};
 use crate::error::{Error, FailedTest, Result, TestResult};
 use crate::file::{list_directories, list_files};
@@ -109,7 +110,7 @@ async fn run_step(
     }
 
     if step.sleep > 0 {
-        sleep(Duration::from_secs(step.sleep.into())).await;
+        sleep(Duration::from_secs((step.sleep * Config::get().timeout_scaling).into())).await;
     }
 
     if step.wait.len() > 0 {
@@ -219,13 +220,13 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
 async fn run_all_tests(
     client: Client,
     test_specs: Vec<TestSpec>,
-    parallel: u8,
 ) -> Result<Vec<TestResult>> {
     let mut results: Vec<TestResult> = vec![];
     let mut tasks = JoinSet::new();
     let mut it = test_specs.into_iter();
     let mut next = it.next();
     let mut cleanup_tasks: Vec<JoinHandle<()>> = vec![];
+    let parallel = Config::get().parallel;
     loop {
         while next.is_some() && (tasks.len() < parallel.into()) {
             let client = client.clone();
@@ -270,13 +271,13 @@ async fn run_all_tests(
     Ok(results)
 }
 
-pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
+pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
     if test_specs.len() == 0 {
         return Err(Error::NoTestsFoundError);
     }
-    let results = run_all_tests(client, test_specs, parallel).await?;
+    let results = run_all_tests(client, test_specs).await?;
     let mut success = true;
     for result in results {
         log_result(&result);

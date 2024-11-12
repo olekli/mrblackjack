@@ -1,6 +1,7 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::config::Config;
 use crate::check::assert_expr;
 use crate::collector::{Bucket, CollectedData, CollectedDataContainer};
 use crate::error::{AssertDiagnostic, Error, Result, TestFailure};
@@ -32,6 +33,7 @@ pub async fn wait_for_all(
 ) -> Result<()> {
     let mut waits: Vec<_> = wait_specs.iter().collect();
     let mut timeout = wait_specs.iter().map(|spec| spec.timeout).max().unwrap() * 10;
+    timeout = timeout * Config::get().timeout_scaling;
     log::debug!("Found max timeout cycles: {timeout}");
 
     log::debug!("Waiting for {} conditions", waits.len());

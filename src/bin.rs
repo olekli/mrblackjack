@@ -3,6 +3,7 @@
 
 use blackjack::error::Result;
 use blackjack::run_test::run_test_suite;
+use blackjack::config::Config;
 use clap::Parser;
 use env_logger;
 use env_logger::Env;
@@ -12,7 +13,10 @@ use std::path::Path;
 #[command(version, about, long_about = None)]
 struct Cli {
     #[arg(short, long, default_value_t = 4)]
-    parallel: u8,
+    parallel: u16,
+
+    #[arg(short, long, default_value_t = 1)]
+    timeout_scaling: u16,
 
     #[arg()]
     test_dir: String,
@@ -25,6 +29,7 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
 
     let test_dir = Path::new(&args.test_dir);
+    Config::init(Config{timeout_scaling: args.timeout_scaling, parallel: args.parallel});
 
-    run_test_suite(test_dir, args.parallel).await
+    run_test_suite(test_dir).await
 }

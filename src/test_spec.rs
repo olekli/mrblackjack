@@ -110,7 +110,7 @@ pub enum ApplySpec {
 pub struct WaitSpec {
     pub target: String,
     pub condition: Expr,
-    pub timeout: u32,
+    pub timeout: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
