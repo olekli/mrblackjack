@@ -277,10 +277,14 @@ pub async fn run_test_suite(dirname: &Path, parallel: u8) -> Result<()> {
         return Err(Error::NoTestsFoundError);
     }
     let results = run_all_tests(client, test_specs, parallel).await?;
+    let mut success = true;
     for result in results {
         log_result(&result);
+        if result.is_err() {
+            success = false;
+        }
     }
-    Ok(())
+    success.then_some(()).ok_or(Error::SomeTestsFailedError)
 }
 
 async fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {

@@ -57,6 +57,9 @@ pub enum Error {
     #[error("No UID?!")]
     NoUidError,
 
+    #[error("Some tests failed")]
+    SomeTestsFailedError,
+
     #[error("Other error: {0}")]
     Other(String),
 }
