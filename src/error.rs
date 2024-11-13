@@ -24,6 +24,9 @@ pub enum Error {
     #[error("Kube error: {0}")]
     KubeError(#[from] kube::Error),
 
+    #[error("ParseGroupVersionError: {0}")]
+    ParseGroupVersionError(#[from] kube::core::gvk::ParseGroupVersionError),
+
     #[error("Serialization error: {0}")]
     SerializationYamlError(#[from] serde_yaml::Error),
 

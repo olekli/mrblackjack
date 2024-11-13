@@ -9,8 +9,7 @@ use crate::{
 use futures::StreamExt;
 use kube::{
     api::{DynamicObject, Patch, PatchParams},
-    core::{ApiResource, GroupVersionKind, TypeMeta},
-    discovery::{Discovery, Scope},
+    core::{ApiResource, GroupVersionKind},
     runtime::watcher,
     runtime::watcher::{Event, InitialListStrategy},
     Api, Client, ResourceExt,
@@ -84,7 +83,6 @@ impl CollectedData {
                 .collect()
         };
 
-        let discovery = Discovery::new(client.clone()).run().await?;
         for uid in uids {
             log::debug!("Removing finalizer for {uid}");
             let resource = {
@@ -97,37 +95,15 @@ impl CollectedData {
 
             if let Some(resource_value) = resource {
                 let obj: DynamicObject = serde_json::from_value(resource_value)?;
-                let TypeMeta { api_version, kind } = obj.types.clone().unwrap_or_default();
                 let name = obj.name_any();
                 let namespace = obj.namespace().unwrap_or_default();
-
-                let group_version = api_version.split('/').collect::<Vec<&str>>();
-                let (group, version) = if group_version.len() == 2 {
-                    (group_version[0], group_version[1])
-                } else {
-                    ("", group_version[0])
-                };
-
-                let gvk = GroupVersionKind {
-                    group: group.to_string(),
-                    version: version.to_string(),
-                    kind: kind.clone(),
-                };
-
-                let (ar, caps) =
-                    discovery
-                        .resolve_gvk(&gvk)
-                        .ok_or_else(|| Error::DiscoveryError {
-                            group: gvk.group,
-                            version: gvk.version,
-                            kind: gvk.kind,
-                        })?;
-
-                let api: Api<DynamicObject> = if caps.scope == Scope::Namespaced {
-                    Api::namespaced_with(client.clone(), &namespace, &ar)
-                } else {
-                    Api::all_with(client.clone(), &ar)
-                };
+                let api: Api<DynamicObject> = Api::namespaced_with(
+                    client.clone(),
+                    &namespace,
+                    &ApiResource::from_gvk(&GroupVersionKind::try_from(
+                        &obj.types.unwrap_or_default(),
+                    )?),
+                );
 
                 let patch = json!({
                     "metadata": {
@@ -174,44 +150,19 @@ impl Collector {
         specs: Vec<WatchSpec>,
         collected_data: CollectedDataContainer,
     ) -> Result<Self> {
-        let discovery = Discovery::new(client.clone()).run().await?;
-        let annotated_specs = specs.into_iter().filter_map(|spec| {
-            let gvk = GroupVersionKind {
-                group: spec.group.clone(),
-                version: spec.version.clone(),
-                kind: spec.kind.clone(),
-            };
-            let (ar, caps) = discovery.resolve_gvk(&gvk).or_else(|| {
-                log::warn!(
-                    "Failed to find resource for group: '{}', version: '{}', kind: '{}'",
-                    spec.group,
-                    spec.version,
-                    spec.kind
-                );
-                None
-            })?;
-
-            let ar = ar.clone();
-            let caps = caps.clone();
-
-            match caps.scope {
-                Scope::Namespaced => Some((ar, spec)),
-                Scope::Cluster => {
-                    log::warn!("Resource {} is not namespaced, skipping", spec.kind);
-                    None
-                }
-            }
-        });
-
         let token = CancellationToken::new();
         let mut tasks = JoinSet::new();
-        for (api_resource, spec) in annotated_specs {
+        for spec in specs {
             let brief = CollectorBrief {
                 client: client.clone(),
                 namespace: namespace.clone(),
                 collected_data: collected_data.clone(),
                 token: token.clone(),
-                api_resource,
+                api_resource: ApiResource::from_gvk(&GroupVersionKind::gvk(
+                    &spec.group,
+                    &spec.version,
+                    &spec.kind,
+                )),
                 spec,
             };
 
