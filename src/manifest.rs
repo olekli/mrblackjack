@@ -3,10 +3,9 @@
 
 use crate::error::{Error, Result};
 use crate::file::read_yaml_files;
-use kube::api::{Api, DeleteParams, DynamicObject, Patch, PatchParams};
+use kube::api::{Api, ApiResource, DeleteParams, DynamicObject, Patch, PatchParams};
 use kube::{
     core::GroupVersionKind,
-    discovery::{Discovery, Scope},
     Client, ResourceExt,
 };
 use serde::Deserialize;
@@ -16,7 +15,7 @@ use tokio::fs;
 
 #[derive(Debug)]
 pub struct ManifestHandle {
-    prepared_resources: Vec<(Api<DynamicObject>, DynamicObject)>,
+    resources: Vec<(Api<DynamicObject>, DynamicObject)>,
 }
 
 impl ManifestHandle {
@@ -25,20 +24,29 @@ impl ManifestHandle {
         yaml_str: String,
         namespace_override: String,
     ) -> Result<Self> {
-        let mut manifest_documents = Vec::new();
-        log::debug!("deserializing manifests");
+        let mut resources = Vec::new();
         for document in serde_yaml::Deserializer::from_str(&yaml_str) {
             let yaml_value: Value = Value::deserialize(document)?;
-            manifest_documents.push(yaml_value);
+            let mut dynamic_obj: DynamicObject = serde_yaml::from_value(yaml_value)?;
+            let gvk = GroupVersionKind::try_from(dynamic_obj.types.clone().unwrap_or_default())?;
+
+            if gvk.kind == "Namespace" {
+                continue;
+            }
+
+            dynamic_obj.metadata.namespace = Some(namespace_override.clone());
+
+            let api: Api<DynamicObject> =
+                Api::namespaced_with(
+                    client.clone(),
+                    &namespace_override,
+                    &ApiResource::from_gvk(&gvk)
+                );
+
+            resources.push((api, dynamic_obj));
         }
 
-        log::debug!("starting discovery");
-        let discovery = Discovery::new(client.clone()).run().await?;
-        log::debug!("preparing resources");
-        let prepared_resources =
-            Self::prepare_resources(&client, &discovery, &manifest_documents, namespace_override)?;
-
-        Ok(ManifestHandle { prepared_resources })
+        Ok(ManifestHandle { resources })
     }
 
     pub async fn new_from_file(
@@ -66,71 +74,8 @@ impl ManifestHandle {
         ManifestHandle::new_from_data(client, manifest_data, namespace_override).await
     }
 
-    fn prepare_resources(
-        client: &Client,
-        discovery: &Discovery,
-        manifest_documents: &[Value],
-        namespace_override: String,
-    ) -> Result<Vec<(Api<DynamicObject>, DynamicObject)>> {
-        let mut resources = Vec::new();
-
-        for yaml_value in manifest_documents {
-            let api_version = yaml_value
-                .get("apiVersion")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| Error::Other("Missing apiVersion".to_string()))?;
-            let kind = yaml_value
-                .get("kind")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| Error::Other("Missing kind".to_string()))?;
-
-            if kind == "Namespace" {
-                continue;
-            }
-
-            let group_version = api_version.split('/').collect::<Vec<&str>>();
-            let (group, version) = if group_version.len() == 2 {
-                (group_version[0], group_version[1])
-            } else {
-                ("", group_version[0])
-            };
-            let (ar, caps) = discovery
-                .resolve_gvk(&GroupVersionKind {
-                    group: group.to_string(),
-                    version: version.to_string(),
-                    kind: kind.to_string(),
-                })
-                .ok_or_else(|| {
-                    Error::Other(format!(
-                        "Resource {}/{} not found in cluster",
-                        api_version, kind
-                    ))
-                })?;
-
-            let mut dynamic_obj: DynamicObject = serde_yaml::from_value(yaml_value.clone())?;
-
-            let is_namespaced = caps.scope == Scope::Namespaced;
-            if is_namespaced {
-                dynamic_obj.metadata.namespace = Some(namespace_override.clone());
-            }
-
-            let api: Api<DynamicObject> = if is_namespaced {
-                let ns = dynamic_obj
-                    .namespace()
-                    .unwrap_or_else(|| namespace_override.clone());
-                Api::namespaced_with(client.clone(), &ns, &ar)
-            } else {
-                Api::all_with(client.clone(), &ar)
-            };
-
-            resources.push((api, dynamic_obj));
-        }
-
-        Ok(resources)
-    }
-
     pub async fn apply(&self) -> Result<()> {
-        for (api, dynamic_obj) in &self.prepared_resources {
+        for (api, dynamic_obj) in &self.resources {
             let kind = dynamic_obj.types.clone().unwrap_or_default().kind;
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
@@ -153,7 +98,7 @@ impl ManifestHandle {
 
     pub async fn delete(&self) -> Result<()> {
         log::debug!("manifest.delete");
-        for (api, dynamic_obj) in &self.prepared_resources {
+        for (api, dynamic_obj) in &self.resources {
             let kind = dynamic_obj.types.clone().unwrap_or_default().kind;
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
