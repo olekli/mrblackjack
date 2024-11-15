@@ -14,6 +14,7 @@ use kube::Client;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
+use crate::script::execute_script;
 
 fn make_namespace(name: &String) -> String {
     let mut truncated_name = name.clone();
@@ -109,10 +110,18 @@ async fn run_step(
         }
     }
 
+    log::debug!("Running scripts");
+    for script in &step.script {
+        let (status, stdout, stderr) = execute_script(script, dirname.clone(), namespace).await?;
+        status.success().then_some(()).ok_or(Error::ScriptFailed(stdout, stderr))?;
+    }
+
+    log::debug!("Sleeping");
     if step.sleep > 0 {
         sleep(Duration::from_secs((step.sleep * Config::get().timeout_scaling).into())).await;
     }
 
+    log::debug!("Waiting");
     if step.wait.len() > 0 {
         wait_for_all(&step.wait, collected_data.clone()).await?;
     }

@@ -13,3 +13,4 @@ pub mod run_test;
 pub mod test_spec;
 pub mod wait;
 pub mod config;
+pub mod script;

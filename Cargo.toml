@@ -1,6 +1,6 @@
 [package]
 name = "mrblackjack"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Ole Kliemann <mail@olekliemann.de>"]
 edition = "2021"
 license = "Apache-2.0"
@@ -28,6 +28,8 @@ fmt = "0.1.0"
 clap = { version = "4.5.20", features = ["derive"] }
 colored = "2.1.0"
 once_cell = "1.20.2"
+shell-words = "1.1.0"
+envsubst = "0.2.1"
 
 [dev-dependencies]
 rstest = "0.17.0"

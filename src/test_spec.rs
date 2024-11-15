@@ -63,12 +63,16 @@ pub struct StepSpec {
     #[serde(default)]
     pub delete: Vec<ApplySpec>,
     #[serde(default)]
+    pub script: Vec<ScriptSpec>,
+    #[serde(default)]
     pub sleep: u16,
     #[serde(default)]
     pub wait: Vec<WaitSpec>,
     #[serde(default)]
     pub assert: Vec<AssertSpec>,
 }
+
+pub type ScriptSpec = String;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct BucketSpec {

@@ -1,0 +1,21 @@
+name: test-script
+steps:
+  - name: nginx-deployment
+    watch:
+      - name: nginx-pods
+        group: ''
+        version: v1
+        kind: Pod
+    script:
+      - kubectl apply -f nginx-deployment.yaml -n ${BLACKJACK_NAMESPACE}
+    wait:
+      - target: nginx-pods
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"

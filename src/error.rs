@@ -21,6 +21,12 @@ pub enum Error {
     #[error("Watcher error: {0}")]
     WatcherError(#[from] kube::runtime::watcher::Error),
 
+    #[error("Command line parse error: {0}")]
+    CommandlineParseError(#[from] shell_words::ParseError),
+
+    #[error("Env substitution error: {0}")]
+    EnvSubstError(#[from] envsubst::Error),
+
     #[error("Kube error: {0}")]
     KubeError(#[from] kube::Error),
 
@@ -46,7 +52,7 @@ pub enum Error {
     PathEncodingError,
 
     #[error("Join error: {0:?}")]
-    JoinError(tokio::task::JoinError),
+    JoinError(#[from] tokio::task::JoinError),
 
     #[error("Interrupted")]
     SIGINT,
@@ -59,6 +65,9 @@ pub enum Error {
 
     #[error("No UID?!")]
     NoUidError,
+
+    #[error("Script failed: {0} {1}")]
+    ScriptFailed(String, String),
 
     #[error("Some tests failed")]
     SomeTestsFailedError,
