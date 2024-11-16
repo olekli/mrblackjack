@@ -7,11 +7,13 @@ use crate::collector::{Bucket, CollectedData, CollectedDataContainer};
 use crate::error::{AssertDiagnostic, Error, Result, TestFailure};
 use crate::test_spec::WaitSpec;
 use std::ops::Deref;
+use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 
 fn check_spec_against_data(
     wait_spec: &WaitSpec,
     collected_data: &CollectedData,
+    env: &HashMap<String, String>,
 ) -> std::result::Result<(), AssertDiagnostic> {
     let default: Bucket = Default::default();
     let data = collected_data
@@ -24,12 +26,13 @@ fn check_spec_against_data(
         .map(|(_, value)| value)
         .collect::<Vec<&serde_json::Value>>();
     let expr = &wait_spec.condition;
-    assert_expr(&data, &expr)
+    assert_expr(&data, &expr, env)
 }
 
 pub async fn wait_for_all(
     wait_specs: &Vec<WaitSpec>,
     collected_data: CollectedDataContainer,
+    env: &HashMap<String, String>,
 ) -> Result<()> {
     let mut waits: Vec<_> = wait_specs.iter().collect();
     let mut timeout = wait_specs.iter().map(|spec| spec.timeout).max().unwrap() * 10;
@@ -43,7 +46,7 @@ pub async fn wait_for_all(
         let _waits = waits.clone();
         let result = _waits
             .iter()
-            .map(|spec| check_spec_against_data(spec, data.deref()));
+            .map(|spec| check_spec_against_data(spec, data.deref(), env));
         let zipped: Vec<(&WaitSpec, std::result::Result<(), AssertDiagnostic>)> =
             waits.into_iter().zip(result.into_iter()).collect();
         let fail: Vec<(&WaitSpec, std::result::Result<(), AssertDiagnostic>)> =

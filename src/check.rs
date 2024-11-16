@@ -4,14 +4,15 @@
 use crate::error::AssertDiagnostic;
 use crate::match_object;
 use crate::test_spec::Expr;
+use std::collections::HashMap;
 use serde_json;
 
-pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr) -> Result<(), AssertDiagnostic> {
+pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr, env: &HashMap<String, String>) -> Result<(), AssertDiagnostic> {
     log::trace!("checking for condition {expr:?}");
     match expr {
         Expr::OneExpr { one } => input
             .iter()
-            .any(|item| match_object::contains(item, one))
+            .any(|item| match_object::contains(item, one, env))
             .then_some(())
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
@@ -19,7 +20,7 @@ pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr) -> Result<(), A
             }),
         Expr::AllExpr { all } => input
             .iter()
-            .all(|item| match_object::contains(item, all))
+            .all(|item| match_object::contains(item, all, env))
             .then_some(())
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
@@ -35,18 +36,18 @@ pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr) -> Result<(), A
         }
         Expr::AndExpr { and } => and
             .iter()
-            .map(|e| assert_expr(input, e))
+            .map(|e| assert_expr(input, e, env))
             .collect::<Result<Vec<()>, AssertDiagnostic>>()
             .map(|_| ()),
         Expr::OrExpr { or } => or
             .iter()
-            .any(|e| assert_expr(input, e).is_ok())
+            .any(|e| assert_expr(input, e, env).is_ok())
             .then_some(())
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
                 expr: expr.clone(),
             }),
-        Expr::NotExpr { not } => assert_expr(input, not)
+        Expr::NotExpr { not } => assert_expr(input, not, env)
             .is_err()
             .then_some(())
             .ok_or_else(|| AssertDiagnostic {
@@ -124,7 +125,7 @@ mod tests {
         #[case] expected: bool,
     ) {
         let v = input.iter().collect::<Vec<&serde_json::Value>>();
-        let result = assert_expr(&v, &expr);
+        let result = assert_expr(&v, &expr, &HashMap::new());
         assert_eq!(result.is_ok(), expected);
     }
 }

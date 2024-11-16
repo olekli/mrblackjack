@@ -113,8 +113,10 @@ async fn run_step(
     }
 
     log::debug!("Running scripts");
+    let mut env: HashMap<String, String> = HashMap::new();
+    env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for script in &step.script {
-        let (status, stdout, stderr) = execute_script(script, dirname.clone(), namespace).await?;
+        let (status, stdout, stderr) = execute_script(script, dirname.clone(), &mut env).await?;
         status
             .success()
             .then_some(())
@@ -131,7 +133,7 @@ async fn run_step(
 
     log::debug!("Waiting");
     if step.wait.len() > 0 {
-        wait_for_all(&step.wait, collected_data.clone()).await?;
+        wait_for_all(&step.wait, collected_data.clone(), &env).await?;
     }
 
     log::debug!("Done");

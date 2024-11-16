@@ -1,32 +1,38 @@
+// Copyright 2024 Ole Kliemann
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::error::{Error, Result};
-use envsubst;
-use shell_words;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
+use tempfile::NamedTempFile;
+use tokio::fs;
+
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace("'", "'\\''"))
+}
 
 pub async fn execute_script(
     command_line: &str,
     wd: PathBuf,
-    namespace: &str,
+    env: &mut HashMap<String, String>,
 ) -> Result<(ExitStatus, String, String)> {
-    let argv = shell_words::split(&envsubst::substitute(
-        command_line,
-        &HashMap::from([("BLACKJACK_NAMESPACE".to_string(), namespace.to_string())]),
-    )?)?;
-    (!argv.is_empty())
-        .then_some(())
-        .ok_or(Error::Other("empty command line".to_string()))?;
-    let command = &argv[0];
-    let args = &argv[1..];
+    let env_file = NamedTempFile::new()?;
+    let env_file_path = env_file.path().to_owned();
+    let shell_command = format!(
+        "{} && export -p > {}",
+        shell_escape(command_line), env_file_path.display()
+    );
 
-    let mut child = Command::new(command)
-        .args(args)
+    let mut child = Command::new("sh")
+        .arg("-lc")
+        .arg(shell_command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .current_dir(wd)
+        .envs(env.clone())
         .spawn()?;
 
     let stdout = child
@@ -58,6 +64,20 @@ pub async fn execute_script(
     let status = child.wait().await?;
     let stdout_result = stdout_future.await??;
     let stderr_result = stderr_future.await??;
+
+    let env_contents = fs::read_to_string(env_file_path).await?;
+    for line in env_contents.lines() {
+        if let Some(rest) = line.strip_prefix("export ") {
+            if let Some(eq_pos) = rest.find('=') {
+                let var_name = &rest[..eq_pos];
+                if var_name.starts_with("BLACKJACK_") {
+                    let value = &rest[eq_pos + 1..];
+                    let value = value.trim_matches('\'');
+                    env.insert(var_name.to_string(), value.to_string());
+                }
+            }
+        }
+    }
 
     Ok((
         status,
