@@ -17,6 +17,7 @@ pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr, env: &HashMap<S
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
                 expr: expr.clone(),
+                env: env.clone(),
             }),
         Expr::AllExpr { all } => input
             .iter()
@@ -25,13 +26,15 @@ pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr, env: &HashMap<S
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
                 expr: expr.clone(),
+                env: env.clone(),
             }),
         Expr::SizeExpr { size } => {
             (input.len() == *size)
                 .then_some(())
                 .ok_or_else(|| AssertDiagnostic {
-                    input: input.iter().cloned().cloned().collect(),
+                    input: vec![serde_json::json!(input.len())],
                     expr: expr.clone(),
+                    env: env.clone(),
                 })
         }
         Expr::AndExpr { and } => and
@@ -46,6 +49,7 @@ pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr, env: &HashMap<S
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
                 expr: expr.clone(),
+                env: env.clone(),
             }),
         Expr::NotExpr { not } => assert_expr(input, not, env)
             .is_err()
@@ -53,6 +57,7 @@ pub fn assert_expr(input: &Vec<&serde_json::Value>, expr: &Expr, env: &HashMap<S
             .ok_or_else(|| AssertDiagnostic {
                 input: input.iter().cloned().cloned().collect(),
                 expr: expr.clone(),
+                env: env.clone(),
             }),
     }
 }
