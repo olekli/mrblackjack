@@ -9,10 +9,22 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tokio::fs::read_to_string;
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema, Eq, PartialEq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum TestType {
+    Cluster,
+    #[default]
+    User,
+}
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TestSpec {
     #[serde(default)]
     pub name: String,
+    #[serde(default, rename="type")]
+    pub test_type: TestType,
+    #[serde(default)]
+    pub ordering: Option<String>,
     #[serde(default)]
     pub steps: Vec<StepSpec>,
     #[serde(skip_deserializing)]
@@ -97,6 +109,8 @@ pub struct WatchSpec {
     pub group: String,
     #[serde(default)]
     pub version: String,
+    #[serde(default)]
+    pub namespace: Option<String>,
     #[serde(default)]
     pub labels: Option<BTreeMap<String, String>>,
     #[serde(default)]

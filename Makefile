@@ -1,7 +1,7 @@
 default: build
 
 build:
-	cargo test
+	cargo test --color always 2>&1 | less -R
 
 run:
 	BLACKJACK_LOG_LEVEL=blackjack=debug cargo run --bin blackjack test

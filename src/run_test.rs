@@ -1,20 +1,22 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::config::Config;
 use crate::collector::{Bucket, CollectedDataContainer, Collector};
+use crate::config::Config;
 use crate::error::{Error, FailedTest, Result, TestResult};
 use crate::file::{list_directories, list_files};
 use crate::manifest::ManifestHandle;
 use crate::namespace::NamespaceHandle;
 use crate::result_formatting::log_result;
-use crate::test_spec::{ApplySpec, StepSpec, TestSpec};
+use crate::script::execute_script;
+use crate::test_spec::{ApplySpec, StepSpec, TestSpec, TestType};
 use crate::wait::wait_for_all;
 use kube::Client;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
-use crate::script::execute_script;
+use std::cmp;
 
 fn make_namespace(name: &String) -> String {
     let mut truncated_name = name.clone();
@@ -113,12 +115,18 @@ async fn run_step(
     log::debug!("Running scripts");
     for script in &step.script {
         let (status, stdout, stderr) = execute_script(script, dirname.clone(), namespace).await?;
-        status.success().then_some(()).ok_or(Error::ScriptFailed(stdout, stderr))?;
+        status
+            .success()
+            .then_some(())
+            .ok_or(Error::ScriptFailed(stdout, stderr))?;
     }
 
     log::debug!("Sleeping");
     if step.sleep > 0 {
-        sleep(Duration::from_secs((step.sleep * Config::get().timeout_scaling).into())).await;
+        sleep(Duration::from_secs(
+            (step.sleep * Config::get().timeout_scaling).into(),
+        ))
+        .await;
     }
 
     log::debug!("Waiting");
@@ -226,16 +234,12 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
     (result, Some(cleanup_task))
 }
 
-async fn run_all_tests(
-    client: Client,
-    test_specs: Vec<TestSpec>,
-) -> Result<Vec<TestResult>> {
+async fn run_all_tests(client: Client, test_specs: Vec<TestSpec>, parallel: u16) -> Result<Vec<TestResult>> {
     let mut results: Vec<TestResult> = vec![];
     let mut tasks = JoinSet::new();
     let mut it = test_specs.into_iter();
     let mut next = it.next();
     let mut cleanup_tasks: Vec<JoinHandle<()>> = vec![];
-    let parallel = Config::get().parallel;
     loop {
         while next.is_some() && (tasks.len() < parallel.into()) {
             let client = client.clone();
@@ -282,11 +286,32 @@ async fn run_all_tests(
 
 pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
+    let parallel = Config::get().parallel;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
-    if test_specs.len() == 0 {
+    let mut sorted_test_specs = test_specs.into_iter().fold(HashMap::new(), |mut map, item| {
+        map.entry(item.test_type.clone()).or_insert(Vec::new()).push(item);
+        map
+    });
+    for (_, tests) in &mut sorted_test_specs {
+        tests.sort_by(|lhs, rhs| match (&lhs.ordering, &rhs.ordering) {
+            (Some(ref l), Some(ref r)) => l.cmp(r),
+            (Some(_), None) => cmp::Ordering::Greater,
+            (None, Some(_)) => cmp::Ordering::Less,
+            (None, None) => cmp::Ordering::Equal,
+        });
+    }
+    let mut results: Vec<TestResult> = vec![];
+    log::info!("Running cluster tests");
+    if let Some(cluster_tests) = sorted_test_specs.remove(&TestType::Cluster) {
+        results.append(&mut run_all_tests(client.clone(), cluster_tests, 1).await?);
+    }
+    log::info!("Running user tests");
+    if let Some(user_tests) = sorted_test_specs.remove(&TestType::User) {
+        results.append(&mut run_all_tests(client.clone(), user_tests, parallel).await?);
+    }
+    if results.is_empty() {
         return Err(Error::NoTestsFoundError);
     }
-    let results = run_all_tests(client, test_specs).await?;
     let mut success = true;
     for result in results {
         log_result(&result);

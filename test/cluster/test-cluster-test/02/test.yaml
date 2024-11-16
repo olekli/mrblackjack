@@ -1,0 +1,18 @@
+name: cluster-test-02
+type: cluster
+ordering: run this one second
+steps:
+  - name: run script
+    watch:
+      - name: nginx-pods
+        group: ''
+        version: v1
+        kind: Pod
+        namespace: default
+    script:
+      - kubectl delete -f nginx-deployment.yaml -n default
+    wait:
+      - target: nginx-pods
+        timeout: 60
+        condition:
+          size: 0

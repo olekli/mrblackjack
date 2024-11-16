@@ -155,7 +155,7 @@ impl Collector {
         for spec in specs {
             let brief = CollectorBrief {
                 client: client.clone(),
-                namespace: namespace.clone(),
+                namespace: spec.namespace.clone().or_else(|| Some(namespace.clone())).unwrap(),
                 collected_data: collected_data.clone(),
                 token: token.clone(),
                 api_resource: ApiResource::from_gvk(&GroupVersionKind::gvk(
