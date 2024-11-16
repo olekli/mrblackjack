@@ -41,7 +41,8 @@ async fn run_step(
     manifests: &mut Vec<ManifestHandle>,
     collectors: &mut Vec<Collector>,
     collected_data: &CollectedDataContainer,
-) -> Result<()> {
+    inherited_env: HashMap<String, String>,
+) -> Result<HashMap<String, String>> {
     log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
     log::debug!("Creating collector");
     collectors.push(
@@ -113,7 +114,7 @@ async fn run_step(
     }
 
     log::debug!("Running scripts");
-    let mut env: HashMap<String, String> = HashMap::new();
+    let mut env: HashMap<String, String> = inherited_env;
     env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for script in &step.script {
         let (status, stdout, stderr) = execute_script(script, dirname.clone(), &mut env).await?;
@@ -137,7 +138,7 @@ async fn run_step(
     }
 
     log::debug!("Done");
-    Ok(())
+    Ok(env)
 }
 
 async fn run_steps(
@@ -148,8 +149,9 @@ async fn run_steps(
     collectors: &mut Vec<Collector>,
     collected_data: &CollectedDataContainer,
 ) -> TestResult {
+    let mut env: HashMap<String, String> = HashMap::new();
     for step in &test_spec.steps {
-        run_step(
+        env = run_step(
             client.clone(),
             namespace,
             test_spec.dir.clone(),
@@ -157,6 +159,7 @@ async fn run_steps(
             manifests,
             collectors,
             collected_data,
+            env,
         )
         .await
         .map_err(|err| FailedTest {
