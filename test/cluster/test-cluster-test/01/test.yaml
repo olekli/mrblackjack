@@ -10,7 +10,7 @@ steps:
         kind: Pod
         namespace: default
     script:
-      - kubectl apply -f nginx-deployment.yaml -n default && export BLACKJACK_IMAGE=nginx:1.14.2
+      - ./script.sh
     sleep: 5
     wait:
       - target: nginx-pods

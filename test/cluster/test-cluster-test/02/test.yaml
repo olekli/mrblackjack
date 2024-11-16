@@ -10,7 +10,7 @@ steps:
         kind: Pod
         namespace: default
     script:
-      - kubectl delete -f nginx-deployment.yaml -n default
+      - ./script.sh
     wait:
       - target: nginx-pods
         timeout: 60

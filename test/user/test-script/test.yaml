@@ -7,7 +7,7 @@ steps:
         version: v1
         kind: Pod
     script:
-      - kubectl apply -f nginx-deployment.yaml -n ${BLACKJACK_NAMESPACE}
+      - ./script.sh
     wait:
       - target: nginx-pods
         timeout: 60

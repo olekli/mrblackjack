@@ -5,7 +5,7 @@ use crate::error::{Error, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tempfile::NamedTempFile;
 use tokio::fs;
@@ -18,7 +18,7 @@ pub async fn execute_script(
     let env_file = NamedTempFile::new()?;
     let env_file_path = env_file.path().to_owned();
     let shell_command = format!(
-        "{} && export -p > {}",
+        ". {} && export -p > {}",
         command_line, env_file_path.display()
     );
 
@@ -40,21 +40,31 @@ pub async fn execute_script(
         .take()
         .ok_or(Error::Other("unable to capture script stderr".to_string()))?;
 
-    let stdout_future: tokio::task::JoinHandle<
-        std::result::Result<std::vec::Vec<u8>, futures::io::Error>,
-    > = tokio::spawn(async move {
-        let mut stdout = stdout;
-        let mut stdout_buf: Vec<u8> = Vec::new();
-        stdout.read_to_end(&mut stdout_buf).await?;
-        Ok(stdout_buf)
+    let stdout_future: tokio::task::JoinHandle<std::result::Result<_, futures::io::Error>> = tokio::spawn(async move {
+        let mut buf = BufReader::new(stdout);
+        let mut result: Vec<String> = Vec::new();
+        loop {
+            let mut s = String::new();
+            let size = buf.read_line(&mut s).await?;
+            if size == 0 {
+                break Ok(result);
+            }
+            log::debug!("STDOUT: {s}");
+            result.push(s);
+        }
     });
-    let stderr_future: tokio::task::JoinHandle<
-        std::result::Result<std::vec::Vec<u8>, futures::io::Error>,
-    > = tokio::spawn(async move {
-        let mut stderr = stderr;
-        let mut stderr_buf: Vec<u8> = Vec::new();
-        stderr.read_to_end(&mut stderr_buf).await?;
-        Ok(stderr_buf)
+    let stderr_future: tokio::task::JoinHandle<std::result::Result<_, futures::io::Error>> = tokio::spawn(async move {
+        let mut buf = BufReader::new(stderr);
+        let mut result: Vec<String> = Vec::new();
+        loop {
+            let mut s = String::new();
+            let size = buf.read_line(&mut s).await?;
+            if size == 0 {
+                break Ok(result);
+            }
+            log::debug!("STDERR: {s}");
+            result.push(s);
+        }
     });
 
     let status = child.wait().await?;
@@ -77,7 +87,7 @@ pub async fn execute_script(
 
     Ok((
         status,
-        String::from_utf8_lossy(&stdout_result).to_string(),
-        String::from_utf8_lossy(&stderr_result).to_string(),
+        stdout_result.join("\n"),
+        stderr_result.join("\n"),
     ))
 }
