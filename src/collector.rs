@@ -21,6 +21,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
+use tokio::time::{sleep, Duration};
 
 const FINALIZER_NAME: &str = "blackjack.io/finalizer";
 
@@ -322,6 +323,7 @@ impl CollectorBrief {
                         self.spec.name,
                         e
                     );
+                    sleep(Duration::from_secs(10)).await;
                 }
             }
         }
