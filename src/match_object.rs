@@ -1,15 +1,17 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashMap;
 use serde_json::Value;
+use envsubst;
 
-pub fn contains(input: &Value, compare: &Value) -> bool {
+pub fn contains(input: &Value, compare: &Value, env: &HashMap<String, String>) -> bool {
     match (input, compare) {
         (Value::Object(map_input), Value::Object(map_compare)) => {
             for (key, val_compare) in map_compare {
                 match map_input.get(key) {
                     Some(val_input) => {
-                        if !contains(val_input, val_compare) {
+                        if !contains(val_input, val_compare, env) {
                             return false;
                         }
                     }
@@ -22,7 +24,7 @@ pub fn contains(input: &Value, compare: &Value) -> bool {
             for val_compare in arr_compare {
                 let mut found = false;
                 for val_input in arr_input {
-                    if contains(val_input, val_compare) {
+                    if contains(val_input, val_compare, env) {
                         found = true;
                         break;
                     }
@@ -33,7 +35,13 @@ pub fn contains(input: &Value, compare: &Value) -> bool {
             }
             true
         }
-        _ => input == compare,
+        (Value::String(s_input), Value::String(s_compare)) => {
+            match envsubst::substitute(s_compare, env) {
+                Ok(s_compare_subst) => s_input == &s_compare_subst,
+                Err(_) => s_input == s_compare,
+            }
+        }
+        _ => input == compare
     }
 }
 
@@ -267,7 +275,87 @@ mod tests {
         false
     )]
     fn test_contains(#[case] input: Value, #[case] compare: Value, #[case] expected: bool) {
-        let result = contains(&input, &compare);
+        let result = contains(&input, &compare, &HashMap::new());
+        assert_eq!(result, expected);
+    }
+
+    #[rstest]
+    #[case(
+        json!({"a": "123", "b": "234"}),
+        json!({"a": "123"}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": "12${ENV3}3", "b": "234"}),
+        json!({"a": "12${ENV3}3"}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": "129993", "b": "234"}),
+        json!({"a": "12${ENV1}3"}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": "126663", "b": "234"}),
+        json!({"a": "12${ENV2}3"}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": "129993", "b": "234"}),
+        json!({"a": "12$ENV13"}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        false
+    )]
+    #[case(
+        json!({"a": "126663", "b": "234"}),
+        json!({"a": "12$ENV23"}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        false
+    )]
+
+
+    #[case(
+        json!({"a": [ "234", "123" ], "b": "234"}),
+        json!({"a": [ "123" ]}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": [ "234", "129993" ], "b": "234"}),
+        json!({"a": [ "12${ENV1}3" ]}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": [ "234", "126663" ], "b": "234"}),
+        json!({"a": [ "12${ENV2}3" ]}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": [ "234", "12${ENV3}3" ], "b": "234"}),
+        json!({"a": [ "12${ENV3}3" ]}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        true
+    )]
+    #[case(
+        json!({"a": [ "234", "129993" ], "b": "234"}),
+        json!({"a": [ "12$ENV13" ]}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        false
+    )]
+    #[case(
+        json!({"a": [ "234", "126663" ], "b": "234"}),
+        json!({"a": [ "12$ENV23" ]}),
+        HashMap::from([("ENV1".to_string(), "999".to_string()), ("ENV2".to_string(), "666".to_string())]),
+        false
+    )]
+    fn test_contains_with_env(#[case] input: Value, #[case] compare: Value, #[case] env: HashMap<String, String>, #[case] expected: bool) {
+        let result = contains(&input, &compare, &env);
         assert_eq!(result, expected);
     }
 }
