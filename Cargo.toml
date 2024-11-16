@@ -1,6 +1,6 @@
 [package]
 name = "mrblackjack"
-version = "0.1.11"
+version = "0.1.12"
 authors = ["Ole Kliemann <mail@olekliemann.de>"]
 edition = "2021"
 license = "Apache-2.0"
