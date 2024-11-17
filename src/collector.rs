@@ -323,6 +323,7 @@ impl CollectorBrief {
                         e
                     );
                     sleep(Duration::from_secs(10)).await;
+                    log::debug!("Resuming to watch resource'{}'", self.spec.name);
                 }
             }
         }
