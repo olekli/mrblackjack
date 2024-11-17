@@ -3,7 +3,6 @@
 
 use crate::collector::{Bucket, CollectedDataContainer, Collector};
 use crate::config::Config;
-use crate::discovery;
 use crate::error::{Error, FailedTest, Result, TestResult};
 use crate::file::{list_directories, list_files};
 use crate::manifest::ManifestHandle;
@@ -264,7 +263,6 @@ async fn run_all_tests(
 
 pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
-    discovery::init(client.clone()).await?;
     let parallel = Config::get().parallel;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
     let mut sorted_test_specs = test_specs

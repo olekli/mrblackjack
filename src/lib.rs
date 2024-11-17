@@ -4,7 +4,6 @@
 pub mod check;
 pub mod collector;
 pub mod config;
-pub mod discovery;
 pub mod error;
 pub mod file;
 pub mod manifest;

@@ -1,7 +1,6 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::discovery;
 use crate::error::{Error, Result};
 use crate::file::read_yaml_files;
 use crate::test_spec::ApplySpec;
@@ -12,6 +11,7 @@ use serde::Deserialize;
 use serde_yaml::Value;
 use std::path::PathBuf;
 use tokio::fs;
+use kube::Discovery;
 
 #[derive(Debug)]
 pub struct ManifestHandle {
@@ -37,6 +37,7 @@ impl ManifestHandle {
         namespace_override: Option<String>,
     ) -> Result<Self> {
         let mut resources = Vec::new();
+        let discovery = Discovery::new(client.clone()).run().await?;
         for document in serde_yaml::Deserializer::from_str(&yaml_str) {
             let yaml_value: Value = Value::deserialize(document)?;
             let mut dynamic_obj: DynamicObject = serde_yaml::from_value(yaml_value)?;
@@ -46,7 +47,7 @@ impl ManifestHandle {
                 continue;
             }
 
-            let (ar, caps) = discovery::get()
+            let (ar, caps) = discovery
                 .resolve_gvk(&gvk)
                 .ok_or_else(|| Error::DiscoveryError(gvk))?;
 
