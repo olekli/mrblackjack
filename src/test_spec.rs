@@ -144,8 +144,8 @@ pub struct WatchSpec {
     pub group: String,
     #[serde(default)]
     pub version: String,
-    #[serde(default)]
-    pub namespace: Option<String>,
+    #[serde(default = "default_namespace")]
+    pub namespace: String,
     #[serde(default)]
     pub labels: Option<BTreeMap<String, String>>,
     #[serde(default)]
@@ -159,7 +159,7 @@ impl EnvSubst for WatchSpec {
             kind: subst_or_not(self.kind, env),
             group: subst_or_not(self.group, env),
             version: subst_or_not(self.version, env),
-            namespace: self.namespace.map(|ns| subst_or_not(ns, env)),
+            namespace: subst_or_not(self.namespace, env),
             labels: self.labels,
             fields: self.fields,
         }

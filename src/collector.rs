@@ -147,7 +147,6 @@ impl Collector {
 
     pub async fn new(
         client: Client,
-        namespace: String,
         specs: Vec<WatchSpec>,
         collected_data: CollectedDataContainer,
     ) -> Result<Self> {
@@ -156,11 +155,7 @@ impl Collector {
         for spec in specs {
             let brief = CollectorBrief {
                 client: client.clone(),
-                namespace: spec
-                    .namespace
-                    .clone()
-                    .or_else(|| Some(namespace.clone()))
-                    .unwrap(),
+                namespace: spec.namespace.clone(),
                 collected_data: collected_data.clone(),
                 token: token.clone(),
                 api_resource: ApiResource::from_gvk(&GroupVersionKind::gvk(

@@ -36,7 +36,6 @@ fn make_namespace(name: &String) -> String {
 
 async fn run_step(
     client: Client,
-    namespace: &String,
     dirname: PathBuf,
     step: StepSpec,
     manifests: &mut Vec<ManifestHandle>,
@@ -47,13 +46,12 @@ async fn run_step(
     let mut env: HashMap<String, String> = inherited_env;
     log::debug!("Current env: {env:?}");
 
-    log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
     log::debug!("Creating collector");
+    let watches: Vec<_> = step.watch.into_iter().map(|w| w.subst_env(&env)).collect();
     collectors.push(
         Collector::new(
             client.clone(),
-            namespace.clone(),
-            step.watch.clone(),
+            watches,
             collected_data.clone(),
         )
         .await?,
@@ -131,10 +129,10 @@ async fn run_steps(
     let mut env: HashMap<String, String> = HashMap::new();
     env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for step in test_spec.steps {
+        log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
         let step_name = step.name.clone();
         env = run_step(
             client.clone(),
-            namespace,
             test_spec.dir.clone(),
             step,
             manifests,
