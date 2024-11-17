@@ -105,7 +105,7 @@ pub struct AssertDiagnostic {
 impl std::fmt::Display for TestFailures {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (i, test_failure) in self.0.iter().enumerate() {
-            writeln!(f, "\nFailed condition {}", i+1)?;
+            writeln!(f, "\nFailed condition {}", i + 1)?;
             writeln!(f, "{test_failure}")?;
         }
         Ok(())

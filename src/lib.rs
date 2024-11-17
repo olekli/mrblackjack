@@ -4,6 +4,7 @@
 pub mod check;
 pub mod collector;
 pub mod config;
+pub mod discovery;
 pub mod error;
 pub mod file;
 pub mod manifest;
@@ -14,4 +15,3 @@ pub mod run_test;
 pub mod script;
 pub mod test_spec;
 pub mod wait;
-pub mod discovery;

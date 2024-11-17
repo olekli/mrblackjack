@@ -38,29 +38,34 @@ pub async fn wait_for_all(
     let mut wait_specs = wait_specs;
     while timeout > 0 && wait_specs.len() > 0 {
         let data = collected_data.lock().await;
-        wait_specs = wait_specs.into_iter().filter(|w| check_spec_against_data(w, &*data).is_err()).collect();
+        wait_specs = wait_specs
+            .into_iter()
+            .filter(|w| check_spec_against_data(w, &*data).is_err())
+            .collect();
         drop(data);
         timeout = timeout - 1;
         log::trace!("Still {} conditions unfulfilled", wait_specs.len());
         sleep(Duration::from_millis(100)).await;
     }
-    let result =
-        if wait_specs.len() == 0 {
+    let result = if wait_specs.len() == 0 {
+        Ok(())
+    } else {
+        let data = collected_data.lock().await;
+        let mut errors: Vec<TestFailure> = Vec::new();
+        for spec in wait_specs {
+            if let Err(assert_diagnostic) = check_spec_against_data(&spec, &*data) {
+                errors.push(TestFailure {
+                    assert_diagnostic,
+                    spec,
+                });
+            }
+        }
+        if errors.len() == 0 {
             Ok(())
         } else {
-            let data = collected_data.lock().await;
-            let mut errors: Vec<TestFailure> = Vec::new();
-            for spec in wait_specs {
-                if let Err(assert_diagnostic) = check_spec_against_data(&spec, &*data) {
-                    errors.push(TestFailure{assert_diagnostic, spec});
-                }
-            }
-            if errors.len() == 0 {
-                Ok(())
-            } else {
-                Err(Error::ConditionsFailed(TestFailures(errors)))
-            }
-        };
+            Err(Error::ConditionsFailed(TestFailures(errors)))
+        }
+    };
     log::debug!("Wait concluded with {result:?}");
     result
 }

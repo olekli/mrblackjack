@@ -36,9 +36,7 @@ pub enum TestType {
     User,
 }
 
-#[derive(
-    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
-)]
+#[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 pub struct TestSpec {
     #[serde(default)]
     pub name: String,
@@ -84,9 +82,7 @@ impl TestSpec {
     }
 }
 
-#[derive(
-    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
-)]
+#[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 pub struct StepSpec {
     pub name: String,
     #[serde(default)]
@@ -107,24 +103,14 @@ pub struct StepSpec {
 
 pub type ScriptSpec = String;
 
-#[derive(
-    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
-)]
+#[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 pub struct BucketSpec {
     pub name: String,
     pub operations: HashSet<BucketOperation>,
 }
 
 #[derive(
-    Clone,
-    Serialize,
-    Deserialize,
-    JsonSchema,
-    Eq,
-    Hash,
-    PartialEq,
-    DisplayAsJsonPretty,
-    DebugAsJson,
+    Clone, Serialize, Deserialize, JsonSchema, Eq, Hash, PartialEq, DisplayAsJsonPretty, DebugAsJson,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum BucketOperation {
@@ -133,9 +119,7 @@ pub enum BucketOperation {
     Delete,
 }
 
-#[derive(
-    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
-)]
+#[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 pub struct WatchSpec {
     pub name: String,
     #[serde(default)]

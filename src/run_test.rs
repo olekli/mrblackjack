@@ -3,6 +3,7 @@
 
 use crate::collector::{Bucket, CollectedDataContainer, Collector};
 use crate::config::Config;
+use crate::discovery;
 use crate::error::{Error, FailedTest, Result, TestResult};
 use crate::file::{list_directories, list_files};
 use crate::manifest::ManifestHandle;
@@ -17,7 +18,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
-use crate::discovery;
 
 fn make_namespace(name: &String) -> String {
     let mut truncated_name = name.clone();
@@ -48,14 +48,7 @@ async fn run_step(
 
     log::debug!("Creating collector");
     let watches: Vec<_> = step.watch.into_iter().map(|w| w.subst_env(&env)).collect();
-    collectors.push(
-        Collector::new(
-            client.clone(),
-            watches,
-            collected_data.clone(),
-        )
-        .await?,
-    );
+    collectors.push(Collector::new(client.clone(), watches, collected_data.clone()).await?);
 
     log::debug!("Setting buckets");
     for bucket_spec in &step.bucket {
@@ -105,11 +98,7 @@ async fn run_step(
     }
 
     log::debug!("Waiting");
-    let wait: Vec<WaitSpec> = step
-        .wait
-        .into_iter()
-        .map(|w| w.subst_env(&env))
-        .collect();
+    let wait: Vec<WaitSpec> = step.wait.into_iter().map(|w| w.subst_env(&env)).collect();
     if wait.len() > 0 {
         wait_for_all(wait, collected_data.clone()).await?;
     }
