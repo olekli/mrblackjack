@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
+use crate::discovery;
 
 fn make_namespace(name: &String) -> String {
     let mut truncated_name = name.clone();
@@ -44,6 +45,7 @@ async fn run_step(
     inherited_env: HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
     let mut env: HashMap<String, String> = inherited_env;
+    log::debug!("Current env: {env:?}");
 
     log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
     log::debug!("Creating collector");
@@ -274,6 +276,7 @@ async fn run_all_tests(
 
 pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
+    discovery::init(client.clone()).await?;
     let parallel = Config::get().parallel;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
     let mut sorted_test_specs = test_specs

@@ -14,12 +14,8 @@ pub enum Error {
     #[error("Path error: {0}")]
     PathError(std::path::PathBuf),
 
-    #[error("Discovery error: {group}/{version} {kind}")]
-    DiscoveryError {
-        group: String,
-        version: String,
-        kind: String,
-    },
+    #[error("Discovery error: {0:?}")]
+    DiscoveryError(kube::core::GroupVersionKind),
 
     #[error("Watcher error: {0}")]
     WatcherError(#[from] kube::runtime::watcher::Error),

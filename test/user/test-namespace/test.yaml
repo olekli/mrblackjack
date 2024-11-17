@@ -1,0 +1,63 @@
+name: test-script
+steps:
+  - name: setup
+    script:
+      - ./script.sh
+  - name: nginx-deployment
+    watch:
+      - name: nginx-pods-default
+        group: ''
+        version: v1
+        kind: Pod
+      - name: nginx-pods-other
+        group: ''
+        version: v1
+        kind: Pod
+        namespace: ${BLACKJACK_OTHER_NAMESPACE}
+      - name: nginx-pods-manifest
+        group: ''
+        version: v1
+        kind: Pod
+        namespace: manifestspace
+    apply:
+      - path: foospace.yaml
+        override-namespace: false
+      - path: nginx
+      - path: nginx
+        namespace: ${BLACKJACK_OTHER_NAMESPACE}
+      - path: nginx
+        override-namespace: false
+    wait:
+      - target: nginx-pods-default
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+      - target: nginx-pods-other
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+      - target: nginx-pods-manifest
+        timeout: 60
+        condition:
+          and:
+            - size: 3
+            - all:
+                status:
+                  conditions:
+                    - type: Ready
+                      status: "True"
+  - name: check all
+    script:
+      - ./check-all.sh

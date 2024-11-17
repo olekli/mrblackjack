@@ -1,10 +1,12 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::discovery;
 use crate::error::{Error, Result};
 use crate::file::read_yaml_files;
-use crate::test_spec::{ApplySpec};
-use kube::api::{Api, ApiResource, DeleteParams, DynamicObject, Patch, PatchParams};
+use crate::test_spec::ApplySpec;
+use kube::api::{Api, DeleteParams, DynamicObject, Patch, PatchParams};
+use kube::core::discovery::Scope;
 use kube::{core::GroupVersionKind, Client, ResourceExt};
 use serde::Deserialize;
 use serde_yaml::Value;
@@ -40,24 +42,36 @@ impl ManifestHandle {
             let mut dynamic_obj: DynamicObject = serde_yaml::from_value(yaml_value)?;
             let gvk = GroupVersionKind::try_from(dynamic_obj.types.clone().unwrap_or_default())?;
 
-            if gvk.kind == "Namespace" {
+            if namespace_override.is_some() && gvk.kind == "Namespace" {
                 continue;
             }
 
-            if let Some(ref ns) = namespace_override {
-                dynamic_obj.metadata.namespace = Some(ns.clone());
-            }
-            let namespace = dynamic_obj
-                .metadata
-                .namespace
-                .clone()
-                .or_else(|| Some("default".to_string()))
-                .unwrap();
+            let (ar, caps) = discovery::get()
+                .resolve_gvk(&gvk)
+                .ok_or_else(|| Error::DiscoveryError(gvk))?;
 
-            let api: Api<DynamicObject> =
-                Api::namespaced_with(client.clone(), &namespace, &ApiResource::from_gvk(&gvk));
+            resources.push(match caps.scope {
+                Scope::Namespaced => {
+                    if let Some(ref ns) = namespace_override {
+                        dynamic_obj.metadata.namespace = Some(ns.clone());
+                    }
+                    let namespace = dynamic_obj
+                        .metadata
+                        .namespace
+                        .clone()
+                        .or_else(|| Some("default".to_string()))
+                        .unwrap();
 
-            resources.push((api, dynamic_obj));
+                    (
+                        Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, &ar),
+                        dynamic_obj,
+                    )
+                }
+                Scope::Cluster => (
+                    Api::<DynamicObject>::all_with(client.clone(), &ar),
+                    dynamic_obj,
+                ),
+            });
         }
 
         Ok(ManifestHandle { resources })
@@ -90,6 +104,7 @@ impl ManifestHandle {
 
     pub async fn apply(&self) -> Result<()> {
         for (api, dynamic_obj) in &self.resources {
+            log::debug!("applying: {dynamic_obj:?}");
             let kind = dynamic_obj.types.clone().unwrap_or_default().kind;
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
@@ -103,8 +118,13 @@ impl ManifestHandle {
 
             let patch_params = PatchParams::apply("blackjack").force();
             let patch = Patch::Apply(dynamic_obj);
-            api.patch(&dynamic_obj.name_any(), &patch_params, &patch)
-                .await?;
+            let result = api
+                .patch(&dynamic_obj.name_any(), &patch_params, &patch)
+                .await;
+            if result.is_err() {
+                log::error!("{result:?}");
+                return Err(Error::KubeError(result.unwrap_err()));
+            }
         }
 
         Ok(())
