@@ -38,7 +38,7 @@ async fn run_step(
     client: Client,
     namespace: &String,
     dirname: PathBuf,
-    step: &StepSpec,
+    step: StepSpec,
     manifests: &mut Vec<ManifestHandle>,
     collectors: &mut Vec<Collector>,
     collected_data: &CollectedDataContainer,
@@ -70,7 +70,7 @@ async fn run_step(
     }
 
     log::debug!("Applying manifests");
-    for apply in step.apply.iter().cloned() {
+    for apply in step.apply {
         let apply = apply.subst_env(&env);
         log::debug!("Creating manifest: {:?}", apply);
         let handle = ManifestHandle::new(apply, dirname.clone(), client.clone()).await?;
@@ -80,7 +80,7 @@ async fn run_step(
     }
 
     log::debug!("Deleting resources");
-    for delete in step.delete.iter().cloned() {
+    for delete in step.delete {
         let delete = delete.subst_env(&env);
         log::debug!("Deleting manifest: {:?}", delete);
         ManifestHandle::new(delete, dirname.clone(), client.clone())
@@ -90,8 +90,8 @@ async fn run_step(
     }
 
     log::debug!("Running scripts");
-    for script in &step.script {
-        let (status, stdout, stderr) = execute_script(script, dirname.clone(), &mut env).await?;
+    for script in step.script {
+        let (status, stdout, stderr) = execute_script(&script, dirname.clone(), &mut env).await?;
         status
             .success()
             .then_some(())
@@ -109,12 +109,11 @@ async fn run_step(
     log::debug!("Waiting");
     let wait: Vec<WaitSpec> = step
         .wait
-        .iter()
-        .cloned()
+        .into_iter()
         .map(|w| w.subst_env(&env))
         .collect();
     if wait.len() > 0 {
-        wait_for_all(&wait, collected_data.clone()).await?;
+        wait_for_all(wait, collected_data.clone()).await?;
     }
 
     log::debug!("Done");
@@ -124,19 +123,20 @@ async fn run_step(
 async fn run_steps(
     client: Client,
     namespace: &String,
-    test_spec: &TestSpec,
+    test_spec: TestSpec,
     manifests: &mut Vec<ManifestHandle>,
     collectors: &mut Vec<Collector>,
     collected_data: &CollectedDataContainer,
 ) -> TestResult {
     let mut env: HashMap<String, String> = HashMap::new();
     env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
-    for step in &test_spec.steps {
+    for step in test_spec.steps {
+        let step_name = step.name.clone();
         env = run_step(
             client.clone(),
             namespace,
             test_spec.dir.clone(),
-            &step,
+            step,
             manifests,
             collectors,
             collected_data,
@@ -145,7 +145,7 @@ async fn run_steps(
         .await
         .map_err(|err| FailedTest {
             test_name: test_spec.name.clone(),
-            step_name: step.name.clone(),
+            step_name: step_name,
             failure: err,
         })?;
     }
@@ -174,10 +174,11 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
     let collected_data = Collector::new_data();
     let mut collectors = Vec::<Collector>::new();
 
+    let test_name = test_spec.name.clone();
     let test_task = run_steps(
         client.clone(),
         &namespace,
-        &test_spec,
+        test_spec,
         &mut manifests,
         &mut collectors,
         &collected_data,
@@ -188,7 +189,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
         _ = sigint => {
             log::info!("Received SIGINT, exiting...");
             Err(FailedTest {
-                test_name: test_spec.name.clone(),
+                test_name: test_name,
                 step_name: "".to_string(),
                 failure: Error::SIGINT,
             })

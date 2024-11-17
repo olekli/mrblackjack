@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::Result;
+use display_json::{DebugAsJson, DisplayAsJsonPretty};
 use envsubst;
 use schemars::{schema::RootSchema, schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,18 @@ pub trait EnvSubst {
     fn subst_env(self, env: &Env) -> Self;
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema, Eq, PartialEq, Hash)]
+#[derive(
+    Default,
+    Clone,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    Eq,
+    PartialEq,
+    Hash,
+    DisplayAsJsonPretty,
+    DebugAsJson,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum TestType {
     Cluster,
@@ -24,7 +36,9 @@ pub enum TestType {
     User,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
+)]
 pub struct TestSpec {
     #[serde(default)]
     pub name: String,
@@ -70,7 +84,9 @@ impl TestSpec {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
+)]
 pub struct StepSpec {
     pub name: String,
     #[serde(default)]
@@ -91,13 +107,25 @@ pub struct StepSpec {
 
 pub type ScriptSpec = String;
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
+)]
 pub struct BucketSpec {
     pub name: String,
     pub operations: HashSet<BucketOperation>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Eq, Hash, PartialEq)]
+#[derive(
+    Clone,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    Eq,
+    Hash,
+    PartialEq,
+    DisplayAsJsonPretty,
+    DebugAsJson,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum BucketOperation {
     Create,
@@ -105,7 +133,9 @@ pub enum BucketOperation {
     Delete,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson,
+)]
 pub struct WatchSpec {
     pub name: String,
     #[serde(default)]
@@ -136,7 +166,7 @@ impl EnvSubst for WatchSpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 pub struct ApplySpec {
     pub path: String,
     #[serde(default = "default_namespace")]
@@ -162,7 +192,7 @@ impl EnvSubst for ApplySpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 pub struct WaitSpec {
     pub target: String,
     pub condition: Expr,
@@ -179,7 +209,7 @@ impl EnvSubst for WaitSpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, DebugAsJson)]
 #[serde(untagged)]
 pub enum Expr {
     AndExpr { and: Vec<Expr> },

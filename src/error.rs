@@ -1,7 +1,9 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::test_spec::Expr;
+use crate::test_spec::{Expr, WaitSpec};
+use display_json::{DebugAsJson, DisplayAsJsonPretty};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -44,8 +46,8 @@ pub enum Error {
     #[error("NamespaceExists")]
     NamespaceExists,
 
-    #[error("Tests failed: {0:?}")]
-    TestFailures(Vec<TestFailure>),
+    #[error("Conditions failed: {0}")]
+    ConditionsFailed(TestFailures),
 
     #[error("Path encoding error")]
     PathEncodingError,
@@ -75,14 +77,14 @@ pub enum Error {
     Other(String),
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum TestFailure {
-    #[error("Missed wait: {0}")]
-    MissedWait(AssertDiagnostic),
-
-    #[error("Failed assert: {0}")]
-    FailedAssert(AssertDiagnostic),
+#[derive(Clone, Serialize, Deserialize, DisplayAsJsonPretty, DebugAsJson)]
+pub struct TestFailure {
+    pub assert_diagnostic: AssertDiagnostic,
+    pub spec: WaitSpec,
 }
+
+#[derive(Debug)]
+pub struct TestFailures(pub Vec<TestFailure>);
 
 pub struct FailedTest {
     pub test_name: String,
@@ -94,10 +96,20 @@ pub type SucceededTest = String;
 
 pub type TestResult = std::result::Result<SucceededTest, FailedTest>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, DebugAsJson, Serialize, Deserialize)]
 pub struct AssertDiagnostic {
     pub expr: Expr,
     pub input: Vec<serde_json::Value>,
+}
+
+impl std::fmt::Display for TestFailures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, test_failure) in self.0.iter().enumerate() {
+            writeln!(f, "\nFailed condition {}", i+1)?;
+            writeln!(f, "{test_failure}")?;
+        }
+        Ok(())
+    }
 }
 
 impl std::fmt::Display for AssertDiagnostic {

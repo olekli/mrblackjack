@@ -4,9 +4,8 @@
 use crate::check::assert_expr;
 use crate::collector::{Bucket, CollectedData, CollectedDataContainer};
 use crate::config::Config;
-use crate::error::{AssertDiagnostic, Error, Result, TestFailure};
+use crate::error::{AssertDiagnostic, Error, Result, TestFailure, TestFailures};
 use crate::test_spec::WaitSpec;
-use std::ops::Deref;
 use tokio::time::{sleep, Duration};
 
 fn check_spec_against_data(
@@ -28,51 +27,40 @@ fn check_spec_against_data(
 }
 
 pub async fn wait_for_all(
-    wait_specs: &Vec<WaitSpec>,
+    wait_specs: Vec<WaitSpec>,
     collected_data: CollectedDataContainer,
 ) -> Result<()> {
-    let mut waits: Vec<_> = wait_specs.iter().collect();
     let mut timeout = wait_specs.iter().map(|spec| spec.timeout).max().unwrap() * 10;
     timeout = timeout * Config::get().timeout_scaling;
     log::debug!("Found max timeout cycles: {timeout}");
 
-    log::debug!("Waiting for {} conditions", waits.len());
-    let result = loop {
+    log::debug!("Waiting for {} conditions", wait_specs.len());
+    let mut wait_specs = wait_specs;
+    while timeout > 0 && wait_specs.len() > 0 {
         let data = collected_data.lock().await;
-
-        let _waits = waits.clone();
-        let result = _waits
-            .iter()
-            .map(|spec| check_spec_against_data(spec, data.deref()));
-        let zipped: Vec<(&WaitSpec, std::result::Result<(), AssertDiagnostic>)> =
-            waits.into_iter().zip(result.into_iter()).collect();
-        let fail: Vec<(&WaitSpec, std::result::Result<(), AssertDiagnostic>)> =
-            zipped.into_iter().filter(|(_, r)| r.is_err()).collect();
-        let (remaining_waits, failed_results): (
-            Vec<&WaitSpec>,
-            Vec<std::result::Result<(), AssertDiagnostic>>,
-        ) = fail.into_iter().unzip();
-        let last_errors: Vec<_> = failed_results.into_iter().map(|r| r.unwrap_err()).collect();
-        waits = remaining_waits;
-
+        wait_specs = wait_specs.into_iter().filter(|w| check_spec_against_data(w, &*data).is_err()).collect();
         drop(data);
-
-        log::trace!("Still {} conditions unfulfilled", waits.len());
-        if waits.len() == 0 {
-            break Ok(());
-        }
-        if timeout == 0 {
-            let last_error = last_errors.iter().next().clone().unwrap().clone();
-            break Err(Error::TestFailures(
-                waits
-                    .into_iter()
-                    .map(|_| TestFailure::MissedWait(last_error.clone()))
-                    .collect(),
-            ));
-        }
         timeout = timeout - 1;
+        log::trace!("Still {} conditions unfulfilled", wait_specs.len());
         sleep(Duration::from_millis(100)).await;
-    };
+    }
+    let result =
+        if wait_specs.len() == 0 {
+            Ok(())
+        } else {
+            let data = collected_data.lock().await;
+            let mut errors: Vec<TestFailure> = Vec::new();
+            for spec in wait_specs {
+                if let Err(assert_diagnostic) = check_spec_against_data(&spec, &*data) {
+                    errors.push(TestFailure{assert_diagnostic, spec});
+                }
+            }
+            if errors.len() == 0 {
+                Ok(())
+            } else {
+                Err(Error::ConditionsFailed(TestFailures(errors)))
+            }
+        };
     log::debug!("Wait concluded with {result:?}");
     result
 }
