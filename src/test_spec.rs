@@ -2,12 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::Result;
+use envsubst;
 use schemars::{schema::RootSchema, schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tokio::fs::read_to_string;
+
+pub type Env = HashMap<String, String>;
+
+pub trait EnvSubst {
+    fn subst_env(self, env: &Env) -> Self;
+}
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, JsonSchema, Eq, PartialEq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -21,7 +28,7 @@ pub enum TestType {
 pub struct TestSpec {
     #[serde(default)]
     pub name: String,
-    #[serde(default, rename="type")]
+    #[serde(default, rename = "type")]
     pub test_type: TestType,
     #[serde(default)]
     pub ordering: Option<String>,
@@ -80,8 +87,6 @@ pub struct StepSpec {
     pub sleep: u16,
     #[serde(default)]
     pub wait: Vec<WaitSpec>,
-    #[serde(default)]
-    pub assert: Vec<AssertSpec>,
 }
 
 pub type ScriptSpec = String;
@@ -117,11 +122,44 @@ pub struct WatchSpec {
     pub fields: Option<BTreeMap<String, String>>,
 }
 
+impl EnvSubst for WatchSpec {
+    fn subst_env(self, env: &Env) -> Self {
+        WatchSpec {
+            name: self.name,
+            kind: subst_or_not(self.kind, env),
+            group: subst_or_not(self.group, env),
+            version: subst_or_not(self.version, env),
+            namespace: self.namespace.map(|ns| subst_or_not(ns, env)),
+            labels: self.labels,
+            fields: self.fields,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum ApplySpec {
-    File { file: String },
-    Dir { dir: String },
+pub struct ApplySpec {
+    pub path: String,
+    #[serde(default = "default_namespace")]
+    pub namespace: String,
+    #[serde(default = "default_override_namespace", rename = "override-namespace")]
+    pub override_namespace: bool,
+}
+
+fn default_override_namespace() -> bool {
+    true
+}
+fn default_namespace() -> String {
+    "${BLACKJACK_NAMESPACE}".to_string()
+}
+
+impl EnvSubst for ApplySpec {
+    fn subst_env(self, env: &Env) -> Self {
+        ApplySpec {
+            path: subst_or_not(self.path, env),
+            namespace: subst_or_not(self.namespace, env),
+            override_namespace: self.override_namespace,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -131,10 +169,14 @@ pub struct WaitSpec {
     pub timeout: u16,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct AssertSpec {
-    pub target: String,
-    pub condition: Expr,
+impl EnvSubst for WaitSpec {
+    fn subst_env(self, env: &Env) -> Self {
+        WaitSpec {
+            target: self.target,
+            condition: self.condition.subst_env(env),
+            timeout: self.timeout,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -146,6 +188,29 @@ pub enum Expr {
     SizeExpr { size: usize },
     OneExpr { one: serde_json::Value },
     AllExpr { all: serde_json::Value },
+}
+
+impl EnvSubst for Expr {
+    fn subst_env(self, env: &Env) -> Self {
+        match self {
+            Expr::AndExpr { and } => Expr::AndExpr {
+                and: and.into_iter().map(|expr| expr.subst_env(env)).collect(),
+            },
+            Expr::OrExpr { or } => Expr::OrExpr {
+                or: or.into_iter().map(|expr| expr.subst_env(env)).collect(),
+            },
+            Expr::NotExpr { not } => Expr::NotExpr {
+                not: Box::new(not.subst_env(env)),
+            },
+            Expr::SizeExpr { size } => Expr::SizeExpr { size },
+            Expr::OneExpr { one } => Expr::OneExpr {
+                one: env_subst_json(one, env),
+            },
+            Expr::AllExpr { all } => Expr::AllExpr {
+                all: env_subst_json(all, env),
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for Expr {
@@ -173,4 +238,26 @@ impl std::fmt::Display for Expr {
             }
         }
     }
+}
+
+fn env_subst_json(value: serde_json::Value, env: &Env) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) => serde_json::Value::String(subst_or_not(s, env)),
+        serde_json::Value::Array(arr) => {
+            let new_arr = arr.into_iter().map(|v| env_subst_json(v, env)).collect();
+            serde_json::Value::Array(new_arr)
+        }
+        serde_json::Value::Object(obj) => {
+            let new_obj = obj
+                .into_iter()
+                .map(|(k, v)| (k, env_subst_json(v, env)))
+                .collect();
+            serde_json::Value::Object(new_obj)
+        }
+        other => other,
+    }
+}
+
+fn subst_or_not(s: String, env: &Env) -> String {
+    envsubst::substitute(&s, env).or::<String>(Ok(s)).unwrap()
 }

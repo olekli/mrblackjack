@@ -1,9 +1,9 @@
 // Copyright 2024 Ole Kliemann
 // SPDX-License-Identifier: Apache-2.0
 
+use blackjack::config::Config;
 use blackjack::error::Result;
 use blackjack::run_test::run_test_suite;
-use blackjack::config::Config;
 use clap::Parser;
 use env_logger;
 use env_logger::Env;
@@ -29,7 +29,10 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
 
     let test_dir = Path::new(&args.test_dir);
-    Config::init(Config{timeout_scaling: args.timeout_scaling, parallel: args.parallel});
+    Config::init(Config {
+        timeout_scaling: args.timeout_scaling,
+        parallel: args.parallel,
+    });
 
     run_test_suite(test_dir).await
 }

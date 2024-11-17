@@ -9,14 +9,14 @@ use crate::manifest::ManifestHandle;
 use crate::namespace::NamespaceHandle;
 use crate::result_formatting::log_result;
 use crate::script::execute_script;
-use crate::test_spec::{ApplySpec, StepSpec, TestSpec, TestType};
+use crate::test_spec::{EnvSubst, StepSpec, TestSpec, TestType, WaitSpec};
 use crate::wait::wait_for_all;
 use kube::Client;
+use std::cmp;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
-use std::cmp;
 
 fn make_namespace(name: &String) -> String {
     let mut truncated_name = name.clone();
@@ -43,6 +43,8 @@ async fn run_step(
     collected_data: &CollectedDataContainer,
     inherited_env: HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
+    let mut env: HashMap<String, String> = inherited_env;
+
     log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
     log::debug!("Creating collector");
     collectors.push(
@@ -66,56 +68,26 @@ async fn run_step(
     }
 
     log::debug!("Applying manifests");
-    for apply in &step.apply {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        match apply {
-            ApplySpec::File { file } => {
-                let path = dirname.join(file);
-                log::debug!("Creating manifest: {:?}", path);
-                let handle = ManifestHandle::new_from_file(client, path, namespace).await?;
-                log::debug!("Applying manifest");
-                handle.apply().await?;
-                log::debug!("Manifest applied");
-                manifests.push(handle);
-            }
-            ApplySpec::Dir { dir } => {
-                let path = dirname.join(dir);
-                log::debug!("Creating manifest: {:?}", path);
-                let handle = ManifestHandle::new_from_dir(client, path, namespace).await?;
-                log::debug!("Applying manifest");
-                handle.apply().await?;
-                log::debug!("Manifest applied");
-                manifests.push(handle);
-            }
-        }
+    for apply in step.apply.iter().cloned() {
+        let apply = apply.subst_env(&env);
+        log::debug!("Creating manifest: {:?}", apply);
+        let handle = ManifestHandle::new(apply, dirname.clone(), client.clone()).await?;
+        log::debug!("Applying manifest");
+        handle.apply().await?;
+        manifests.push(handle);
     }
 
     log::debug!("Deleting resources");
-    for delete in &step.delete {
-        match delete {
-            ApplySpec::File { file } => {
-                let path = dirname.join(file);
-                log::debug!("Deleting: {:?}", path);
-                ManifestHandle::new_from_file(client.clone(), path, namespace.clone())
-                    .await?
-                    .delete()
-                    .await?
-            }
-            ApplySpec::Dir { dir } => {
-                let path = dirname.join(dir);
-                log::debug!("Deleting: {:?}", path);
-                ManifestHandle::new_from_dir(client.clone(), path, namespace.clone())
-                    .await?
-                    .delete()
-                    .await?
-            }
-        }
+    for delete in step.delete.iter().cloned() {
+        let delete = delete.subst_env(&env);
+        log::debug!("Deleting manifest: {:?}", delete);
+        ManifestHandle::new(delete, dirname.clone(), client.clone())
+            .await?
+            .delete()
+            .await?;
     }
 
     log::debug!("Running scripts");
-    let mut env: HashMap<String, String> = inherited_env;
-    env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for script in &step.script {
         let (status, stdout, stderr) = execute_script(script, dirname.clone(), &mut env).await?;
         status
@@ -133,8 +105,14 @@ async fn run_step(
     }
 
     log::debug!("Waiting");
-    if step.wait.len() > 0 {
-        wait_for_all(&step.wait, collected_data.clone(), &env).await?;
+    let wait: Vec<WaitSpec> = step
+        .wait
+        .iter()
+        .cloned()
+        .map(|w| w.subst_env(&env))
+        .collect();
+    if wait.len() > 0 {
+        wait_for_all(&wait, collected_data.clone()).await?;
     }
 
     log::debug!("Done");
@@ -150,6 +128,7 @@ async fn run_steps(
     collected_data: &CollectedDataContainer,
 ) -> TestResult {
     let mut env: HashMap<String, String> = HashMap::new();
+    env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for step in &test_spec.steps {
         env = run_step(
             client.clone(),
@@ -239,7 +218,11 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
     (result, Some(cleanup_task))
 }
 
-async fn run_all_tests(client: Client, test_specs: Vec<TestSpec>, parallel: u16) -> Result<Vec<TestResult>> {
+async fn run_all_tests(
+    client: Client,
+    test_specs: Vec<TestSpec>,
+    parallel: u16,
+) -> Result<Vec<TestResult>> {
     let mut results: Vec<TestResult> = vec![];
     let mut tasks = JoinSet::new();
     let mut it = test_specs.into_iter();
@@ -293,10 +276,14 @@ pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
     let parallel = Config::get().parallel;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
-    let mut sorted_test_specs = test_specs.into_iter().fold(HashMap::new(), |mut map, item| {
-        map.entry(item.test_type.clone()).or_insert(Vec::new()).push(item);
-        map
-    });
+    let mut sorted_test_specs = test_specs
+        .into_iter()
+        .fold(HashMap::new(), |mut map, item| {
+            map.entry(item.test_type.clone())
+                .or_insert(Vec::new())
+                .push(item);
+            map
+        });
     for (_, tests) in &mut sorted_test_specs {
         tests.sort_by(|lhs, rhs| match (&lhs.ordering, &rhs.ordering) {
             (Some(ref l), Some(ref r)) => l.cmp(r),

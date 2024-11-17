@@ -3,11 +3,9 @@
 
 use crate::error::{Error, Result};
 use crate::file::read_yaml_files;
+use crate::test_spec::{ApplySpec};
 use kube::api::{Api, ApiResource, DeleteParams, DynamicObject, Patch, PatchParams};
-use kube::{
-    core::GroupVersionKind,
-    Client, ResourceExt,
-};
+use kube::{core::GroupVersionKind, Client, ResourceExt};
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::path::PathBuf;
@@ -19,10 +17,22 @@ pub struct ManifestHandle {
 }
 
 impl ManifestHandle {
-    pub async fn new_from_data(
+    pub async fn new(spec: ApplySpec, wd: PathBuf, client: Client) -> Result<Self> {
+        let path = wd.join(spec.path);
+        let namespace = spec.override_namespace.then_some(spec.namespace);
+        if path.is_file() {
+            ManifestHandle::new_from_file(client, path, namespace).await
+        } else if path.is_dir() {
+            ManifestHandle::new_from_dir(client, path, namespace).await
+        } else {
+            Err(Error::PathError(path))
+        }
+    }
+
+    async fn new_from_data(
         client: Client,
         yaml_str: String,
-        namespace_override: String,
+        namespace_override: Option<String>,
     ) -> Result<Self> {
         let mut resources = Vec::new();
         for document in serde_yaml::Deserializer::from_str(&yaml_str) {
@@ -34,14 +44,18 @@ impl ManifestHandle {
                 continue;
             }
 
-            dynamic_obj.metadata.namespace = Some(namespace_override.clone());
+            if let Some(ref ns) = namespace_override {
+                dynamic_obj.metadata.namespace = Some(ns.clone());
+            }
+            let namespace = dynamic_obj
+                .metadata
+                .namespace
+                .clone()
+                .or_else(|| Some("default".to_string()))
+                .unwrap();
 
             let api: Api<DynamicObject> =
-                Api::namespaced_with(
-                    client.clone(),
-                    &namespace_override,
-                    &ApiResource::from_gvk(&gvk)
-                );
+                Api::namespaced_with(client.clone(), &namespace, &ApiResource::from_gvk(&gvk));
 
             resources.push((api, dynamic_obj));
         }
@@ -49,10 +63,10 @@ impl ManifestHandle {
         Ok(ManifestHandle { resources })
     }
 
-    pub async fn new_from_file(
+    async fn new_from_file(
         client: Client,
         filename: PathBuf,
-        namespace_override: String,
+        namespace_override: Option<String>,
     ) -> Result<Self> {
         ManifestHandle::new_from_data(
             client,
@@ -62,10 +76,10 @@ impl ManifestHandle {
         .await
     }
 
-    pub async fn new_from_dir(
+    async fn new_from_dir(
         client: Client,
         dirname: PathBuf,
-        namespace_override: String,
+        namespace_override: Option<String>,
     ) -> Result<Self> {
         log::debug!("new_from_dir");
         let manifest_data_ = read_yaml_files(dirname).await;

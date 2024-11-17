@@ -20,8 +20,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
 use tokio::time::{sleep, Duration};
+use tokio_util::sync::CancellationToken;
 
 const FINALIZER_NAME: &str = "blackjack.io/finalizer";
 
@@ -156,7 +156,11 @@ impl Collector {
         for spec in specs {
             let brief = CollectorBrief {
                 client: client.clone(),
-                namespace: spec.namespace.clone().or_else(|| Some(namespace.clone())).unwrap(),
+                namespace: spec
+                    .namespace
+                    .clone()
+                    .or_else(|| Some(namespace.clone()))
+                    .unwrap(),
                 collected_data: collected_data.clone(),
                 token: token.clone(),
                 api_resource: ApiResource::from_gvk(&GroupVersionKind::gvk(

@@ -5,10 +5,10 @@ use crate::error::{Error, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tempfile::NamedTempFile;
 use tokio::fs;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 
 pub async fn execute_script(
     command_line: &str,
@@ -19,7 +19,8 @@ pub async fn execute_script(
     let env_file_path = env_file.path().to_owned();
     let shell_command = format!(
         ". {} && export -p > {}",
-        command_line, env_file_path.display()
+        command_line,
+        env_file_path.display()
     );
 
     let mut child = Command::new("sh")
@@ -40,32 +41,34 @@ pub async fn execute_script(
         .take()
         .ok_or(Error::Other("unable to capture script stderr".to_string()))?;
 
-    let stdout_future: tokio::task::JoinHandle<std::result::Result<_, futures::io::Error>> = tokio::spawn(async move {
-        let mut buf = BufReader::new(stdout);
-        let mut result: Vec<String> = Vec::new();
-        loop {
-            let mut s = String::new();
-            let size = buf.read_line(&mut s).await?;
-            if size == 0 {
-                break Ok(result);
+    let stdout_future: tokio::task::JoinHandle<std::result::Result<_, futures::io::Error>> =
+        tokio::spawn(async move {
+            let mut buf = BufReader::new(stdout);
+            let mut result: Vec<String> = Vec::new();
+            loop {
+                let mut s = String::new();
+                let size = buf.read_line(&mut s).await?;
+                if size == 0 {
+                    break Ok(result);
+                }
+                log::debug!("STDOUT: {s}");
+                result.push(s);
             }
-            log::debug!("STDOUT: {s}");
-            result.push(s);
-        }
-    });
-    let stderr_future: tokio::task::JoinHandle<std::result::Result<_, futures::io::Error>> = tokio::spawn(async move {
-        let mut buf = BufReader::new(stderr);
-        let mut result: Vec<String> = Vec::new();
-        loop {
-            let mut s = String::new();
-            let size = buf.read_line(&mut s).await?;
-            if size == 0 {
-                break Ok(result);
+        });
+    let stderr_future: tokio::task::JoinHandle<std::result::Result<_, futures::io::Error>> =
+        tokio::spawn(async move {
+            let mut buf = BufReader::new(stderr);
+            let mut result: Vec<String> = Vec::new();
+            loop {
+                let mut s = String::new();
+                let size = buf.read_line(&mut s).await?;
+                if size == 0 {
+                    break Ok(result);
+                }
+                log::debug!("STDERR: {s}");
+                result.push(s);
             }
-            log::debug!("STDERR: {s}");
-            result.push(s);
-        }
-    });
+        });
 
     let status = child.wait().await?;
     let stdout_result = stdout_future.await??;
@@ -85,9 +88,5 @@ pub async fn execute_script(
         }
     }
 
-    Ok((
-        status,
-        stdout_result.join("\n"),
-        stderr_result.join("\n"),
-    ))
+    Ok((status, stdout_result.join("\n"), stderr_result.join("\n")))
 }

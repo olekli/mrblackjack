@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::test_spec::Expr;
-use std::collections::HashMap;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -11,6 +10,9 @@ pub enum Error {
 
     #[error("String error")]
     StringError,
+
+    #[error("Path error: {0}")]
+    PathError(std::path::PathBuf),
 
     #[error("Discovery error: {group}/{version} {kind}")]
     DiscoveryError {
@@ -100,7 +102,6 @@ pub type TestResult = std::result::Result<SucceededTest, FailedTest>;
 pub struct AssertDiagnostic {
     pub expr: Expr,
     pub input: Vec<serde_json::Value>,
-    pub env: HashMap<String, String>,
 }
 
 impl std::fmt::Display for AssertDiagnostic {

@@ -11,7 +11,7 @@ steps:
         version: v1
         kind: Service
     apply:
-      - dir: nginx
+      - path: nginx
     wait:
       - target: nginx-pods
         timeout: 60

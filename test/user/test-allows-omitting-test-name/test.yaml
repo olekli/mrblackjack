@@ -6,7 +6,7 @@ steps:
         version: v1
         kind: Pod
     apply:
-      - file: nginx-deployment.yaml
+      - path: nginx-deployment.yaml
     wait:
       - target: nginx-pods
         timeout: 60
