@@ -37,7 +37,9 @@ pub async fn wait_for_all(
     log::debug!("Waiting for {} conditions", wait_specs.len());
     let mut wait_specs = wait_specs;
     while timeout > 0 && wait_specs.len() > 0 {
+        log::trace!("trying to lock mutex");
         let data = collected_data.lock().await;
+        log::trace!("mutex locked");
         wait_specs = wait_specs
             .into_iter()
             .filter(|w| check_spec_against_data(w, &*data).is_err())
@@ -45,6 +47,7 @@ pub async fn wait_for_all(
         drop(data);
         timeout = timeout - 1;
         log::trace!("Still {} conditions unfulfilled", wait_specs.len());
+        log::trace!("sleeping");
         sleep(Duration::from_millis(100)).await;
     }
     let result = if wait_specs.len() == 0 {
