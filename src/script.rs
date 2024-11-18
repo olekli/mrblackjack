@@ -52,7 +52,7 @@ pub async fn execute_script(
                 if size == 0 {
                     break Ok(result);
                 }
-                log::info!("{}", s.dimmed());
+                log::info!("{}", s.strip_suffix("\n").or(Some(&s)).unwrap().dimmed());
                 result.push(s);
             }
         });
@@ -66,7 +66,7 @@ pub async fn execute_script(
                 if size == 0 {
                     break Ok(result);
                 }
-                log::info!("{}", s.dimmed());
+                log::info!("{}", s.strip_suffix("\n").or(Some(&s)).unwrap().dimmed());
                 result.push(s);
             }
         });
