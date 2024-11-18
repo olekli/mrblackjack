@@ -86,12 +86,17 @@ async fn run_step(
             .then_some(())
             .ok_or(Error::ScriptFailed(stdout, stderr))?;
     }
-    log::debug!("{}/{} environment after script: {:?}", test_name, step.name, env);
+    log::debug!(
+        "{}/{} environment after script: {:?}",
+        test_name,
+        step.name,
+        env
+    );
 
     log::debug!("Sleeping");
     if step.sleep > 0 {
         sleep(Duration::from_secs(
-            (step.sleep * Config::get().timeout_scaling).into(),
+            (step.sleep * Config::get().timeout_scaling.ceil() as u16).into(),
         ))
         .await;
     }
@@ -118,7 +123,12 @@ async fn run_steps(
     env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for step in test_spec.steps {
         log::info!("Running step {}/{}", test_spec.name, step.name);
-        log::debug!("{}/{} current environment: {:?}", test_spec.name, step.name, env);
+        log::debug!(
+            "{}/{} current environment: {:?}",
+            test_spec.name,
+            step.name,
+            env
+        );
         let step_name = step.name.clone();
         env = run_step(
             client.clone(),
@@ -268,7 +278,6 @@ async fn run_all_tests(
 
 pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
-    let parallel = Config::get().parallel;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
     let mut sorted_test_specs = test_specs
         .into_iter()
@@ -289,12 +298,21 @@ pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let mut results: Vec<TestResult> = vec![];
     log::info!("Running cluster tests");
     if let Some(cluster_tests) = sorted_test_specs.remove(&TestType::Cluster) {
-        results.append(&mut run_all_tests(client.clone(), cluster_tests, 1).await?);
+        results.append(
+            &mut run_all_tests(
+                client.clone(),
+                cluster_tests,
+                Config::get().cluster.parallel,
+            )
+            .await?,
+        );
     }
     if results.iter().all(|r| r.is_ok()) {
         log::info!("Running user tests");
         if let Some(user_tests) = sorted_test_specs.remove(&TestType::User) {
-            results.append(&mut run_all_tests(client.clone(), user_tests, parallel).await?);
+            results.append(
+                &mut run_all_tests(client.clone(), user_tests, Config::get().user.parallel).await?,
+            );
         }
     } else {
         log::error!("Skipping user tests after cluster test failed");

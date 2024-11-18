@@ -31,7 +31,7 @@ pub async fn wait_for_all(
     collected_data: CollectedDataContainer,
 ) -> Result<()> {
     let mut timeout = wait_specs.iter().map(|spec| spec.timeout).max().unwrap() * 10;
-    timeout = timeout * Config::get().timeout_scaling;
+    timeout = timeout * Config::get().timeout_scaling.ceil() as u16;
     log::debug!("Found max timeout cycles: {timeout}");
 
     log::debug!("Waiting for {} conditions", wait_specs.len());
