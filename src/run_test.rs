@@ -36,6 +36,7 @@ fn make_namespace(name: &String) -> String {
 async fn run_step(
     client: Client,
     dirname: PathBuf,
+    test_name: &str,
     step: StepSpec,
     manifests: &mut Vec<ManifestHandle>,
     collectors: &mut Vec<Collector>,
@@ -43,8 +44,6 @@ async fn run_step(
     inherited_env: HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
     let mut env: HashMap<String, String> = inherited_env;
-    log::debug!("Current env: {env:?}");
-
     log::debug!("Creating collector");
     let watches: Vec<_> = step.watch.into_iter().map(|w| w.subst_env(&env)).collect();
     collectors.push(Collector::new(client.clone(), watches, collected_data.clone()).await?);
@@ -87,6 +86,7 @@ async fn run_step(
             .then_some(())
             .ok_or(Error::ScriptFailed(stdout, stderr))?;
     }
+    log::debug!("{}/{} environment after script: {:?}", test_name, step.name, env);
 
     log::debug!("Sleeping");
     if step.sleep > 0 {
@@ -118,10 +118,12 @@ async fn run_steps(
     env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for step in test_spec.steps {
         log::info!("Running step {}/{}", test_spec.name, step.name);
+        log::debug!("{}/{} current environment: {:?}", test_spec.name, step.name, env);
         let step_name = step.name.clone();
         env = run_step(
             client.clone(),
             test_spec.dir.clone(),
+            &test_spec.name,
             step,
             manifests,
             collectors,
@@ -289,9 +291,13 @@ pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     if let Some(cluster_tests) = sorted_test_specs.remove(&TestType::Cluster) {
         results.append(&mut run_all_tests(client.clone(), cluster_tests, 1).await?);
     }
-    log::info!("Running user tests");
-    if let Some(user_tests) = sorted_test_specs.remove(&TestType::User) {
-        results.append(&mut run_all_tests(client.clone(), user_tests, parallel).await?);
+    if results.iter().all(|r| r.is_ok()) {
+        log::info!("Running user tests");
+        if let Some(user_tests) = sorted_test_specs.remove(&TestType::User) {
+            results.append(&mut run_all_tests(client.clone(), user_tests, parallel).await?);
+        }
+    } else {
+        log::error!("Skipping user tests after cluster test failed");
     }
     if results.is_empty() {
         return Err(Error::NoTestsFoundError);
