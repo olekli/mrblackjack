@@ -48,6 +48,8 @@ pub struct TestSpec {
     pub steps: Vec<StepSpec>,
     #[serde(skip_deserializing)]
     pub dir: PathBuf,
+    #[serde(default)]
+    pub attempts: Option<u16>,
 }
 
 impl TestSpec {

@@ -1,0 +1,8 @@
+name: test-retry
+type: cluster
+ordering: X
+attempts: 2
+steps:
+  - name: run script
+    script:
+      - ./script.sh

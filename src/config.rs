@@ -9,7 +9,7 @@ use tokio::fs;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestTypeConfig {
     pub parallel: u16,
-    pub retries: u16,
+    pub attempts: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,11 +27,11 @@ impl Default for Config {
             loglevel: "info".to_string(),
             cluster: TestTypeConfig {
                 parallel: 1,
-                retries: 1,
+                attempts: 1,
             },
             user: TestTypeConfig {
                 parallel: 4,
-                retries: 3,
+                attempts: 2,
             },
         }
     }
@@ -78,7 +78,35 @@ impl Config {
             Config{
                 cluster: TestTypeConfig{
                     parallel,
+                    ..self.cluster
+                },
+                ..self
+            }
+        } else {
+            self
+        }
+    }
+
+    pub fn with_user_attempts(self, attempts: Option<u16>) -> Self {
+        if let Some(attempts) = attempts {
+            Config{
+                user: TestTypeConfig{
+                    attempts,
                     ..self.user
+                },
+                ..self
+            }
+        } else {
+            self
+        }
+    }
+
+    pub fn with_cluster_attempts(self, attempts: Option<u16>) -> Self {
+        if let Some(attempts) = attempts {
+            Config{
+                cluster: TestTypeConfig{
+                    attempts,
+                    ..self.cluster
                 },
                 ..self
             }

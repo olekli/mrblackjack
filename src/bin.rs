@@ -22,6 +22,12 @@ struct Cli {
     cluster_parallel: Option<u16>,
 
     #[arg(long)]
+    user_attempts: Option<u16>,
+
+    #[arg(long)]
+    cluster_attempts: Option<u16>,
+
+    #[arg(long)]
     timeout_scaling: Option<f32>,
 
     #[arg()]
@@ -36,6 +42,8 @@ async fn main() -> Result<()> {
             .await?
             .with_user_parallel(args.user_parallel)
             .with_cluster_parallel(args.cluster_parallel)
+            .with_user_attempts(args.user_attempts)
+            .with_cluster_attempts(args.cluster_attempts)
             .with_timeout_scaling(args.timeout_scaling),
     );
 

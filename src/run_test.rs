@@ -154,7 +154,7 @@ async fn run_steps(
     Ok(test_spec.name.clone())
 }
 
-async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<JoinHandle<()>>) {
+async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, TestSpec, Option<JoinHandle<()>>) {
     let namespace = make_namespace(&test_spec.name);
     log::info!(
         "Running test '{}' with unique namespace '{}'",
@@ -168,7 +168,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
         failure: err,
     });
     if ns.is_err() {
-        return (Err(ns.unwrap_err()), None);
+        return (Err(ns.unwrap_err()), test_spec, None);
     }
 
     let mut manifests = Vec::<ManifestHandle>::new();
@@ -179,7 +179,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
     let test_task = run_steps(
         client.clone(),
         &namespace,
-        test_spec,
+        test_spec.clone(),
         &mut manifests,
         &mut collectors,
         &collected_data,
@@ -219,19 +219,22 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<Jo
     });
 
     log::debug!("cleanup done");
-    (result, Some(cleanup_task))
+    (result, test_spec, Some(cleanup_task))
 }
 
 async fn run_all_tests(
     client: Client,
     test_specs: Vec<TestSpec>,
     parallel: u16,
+    attempts: u16,
 ) -> Result<Vec<TestResult>> {
     let mut results: Vec<TestResult> = vec![];
     let mut tasks = JoinSet::new();
     let mut it = test_specs.into_iter();
-    let mut next = it.next();
     let mut cleanup_tasks: Vec<JoinHandle<()>> = vec![];
+    let mut attempt_counter: HashMap<String, u16> = HashMap::new();
+
+    let mut next = it.next();
     loop {
         while next.is_some() && (tasks.len() < parallel.into()) {
             let client = client.clone();
@@ -239,22 +242,35 @@ async fn run_all_tests(
             next = it.next();
         }
         if let Some(result) = tasks.join_next().await {
-            let (test_result, cleanup_task) = result.map_err(|err| Error::JoinError(err))?;
+            let (test_result, test_spec, cleanup_task) =
+                result.map_err(|err| Error::JoinError(err))?;
+            attempt_counter
+                .entry(test_spec.name.clone())
+                .and_modify(|i| *i += 1)
+                .or_insert(1);
             if let Some(ct) = cleanup_task {
                 cleanup_tasks.push(ct);
             }
             if test_result.is_ok() {
                 results.push(test_result);
             } else {
-                results.push(test_result);
-                while next.is_some() {
-                    let test_spec = next.unwrap();
-                    results.push(Err(FailedTest {
-                        test_name: test_spec.name,
-                        step_name: "".to_string(),
-                        failure: Error::NotExecuted,
-                    }));
-                    next = it.next();
+                let attempts = test_spec.attempts.or(Some(attempts)).unwrap();
+                if attempt_counter.get(&test_spec.name).unwrap() < &attempts {
+                    it = it.chain(std::iter::once(test_spec)).collect::<Vec<_>>().into_iter();
+                    if next.is_none() {
+                        next = it.next();
+                    }
+                } else {
+                    results.push(test_result);
+                    while next.is_some() {
+                        let test_spec = next.unwrap();
+                        results.push(Err(FailedTest {
+                            test_name: test_spec.name,
+                            step_name: "".to_string(),
+                            failure: Error::NotExecuted,
+                        }));
+                        next = it.next();
+                    }
                 }
             }
         } else {
@@ -303,6 +319,7 @@ pub async fn run_test_suite(dirname: &Path) -> Result<()> {
                 client.clone(),
                 cluster_tests,
                 Config::get().cluster.parallel,
+                Config::get().cluster.attempts,
             )
             .await?,
         );
@@ -311,7 +328,13 @@ pub async fn run_test_suite(dirname: &Path) -> Result<()> {
         log::info!("Running user tests");
         if let Some(user_tests) = sorted_test_specs.remove(&TestType::User) {
             results.append(
-                &mut run_all_tests(client.clone(), user_tests, Config::get().user.parallel).await?,
+                &mut run_all_tests(
+                    client.clone(),
+                    user_tests,
+                    Config::get().user.parallel,
+                    Config::get().user.attempts,
+                )
+                .await?,
             );
         }
     } else {
