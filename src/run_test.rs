@@ -117,7 +117,7 @@ async fn run_steps(
     let mut env: HashMap<String, String> = HashMap::new();
     env.insert("BLACKJACK_NAMESPACE".to_string(), namespace.to_string());
     for step in test_spec.steps {
-        log::info!("Running step '{}' in namespace '{}'", step.name, namespace);
+        log::info!("Running step {}/{}", test_spec.name, step.name);
         let step_name = step.name.clone();
         env = run_step(
             client.clone(),
@@ -129,10 +129,13 @@ async fn run_steps(
             env,
         )
         .await
-        .map_err(|err| FailedTest {
-            test_name: test_spec.name.clone(),
-            step_name: step_name,
-            failure: err,
+        .map_err(|err| {
+            log::error!("Test step {}/{} failed", test_spec.name, step_name);
+            FailedTest {
+                test_name: test_spec.name.clone(),
+                step_name: step_name,
+                failure: err,
+            }
         })?;
     }
 
@@ -142,7 +145,7 @@ async fn run_steps(
 async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, Option<JoinHandle<()>>) {
     let namespace = make_namespace(&test_spec.name);
     log::info!(
-        "Running test '{}' in namespace '{}'",
+        "Running test '{}' with unique namespace '{}'",
         test_spec.name,
         namespace
     );

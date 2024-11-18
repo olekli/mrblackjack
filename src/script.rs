@@ -9,6 +9,7 @@ use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use colored::Colorize;
 
 pub async fn execute_script(
     command_line: &str,
@@ -51,7 +52,7 @@ pub async fn execute_script(
                 if size == 0 {
                     break Ok(result);
                 }
-                log::debug!("STDOUT: {s}");
+                log::info!("{}", s.dimmed());
                 result.push(s);
             }
         });
@@ -65,7 +66,7 @@ pub async fn execute_script(
                 if size == 0 {
                     break Ok(result);
                 }
-                log::debug!("STDERR: {s}");
+                log::info!("{}", s.dimmed());
                 result.push(s);
             }
         });
