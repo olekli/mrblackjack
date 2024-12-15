@@ -37,6 +37,7 @@ pub enum TestType {
 }
 
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
+#[serde(deny_unknown_fields)]
 pub struct TestSpec {
     #[serde(default)]
     pub name: String,
@@ -85,6 +86,7 @@ impl TestSpec {
 }
 
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
+#[serde(deny_unknown_fields)]
 pub struct StepSpec {
     pub name: String,
     #[serde(default)]
@@ -106,6 +108,7 @@ pub struct StepSpec {
 pub type ScriptSpec = String;
 
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
+#[serde(deny_unknown_fields)]
 pub struct BucketSpec {
     pub name: String,
     pub operations: HashSet<BucketOperation>,
@@ -115,6 +118,7 @@ pub struct BucketSpec {
     Clone, Serialize, Deserialize, JsonSchema, Eq, Hash, PartialEq, DisplayAsJsonPretty, DebugAsJson,
 )]
 #[serde(rename_all = "lowercase")]
+#[serde(deny_unknown_fields)]
 pub enum BucketOperation {
     Create,
     Patch,
@@ -122,6 +126,7 @@ pub enum BucketOperation {
 }
 
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
+#[serde(deny_unknown_fields)]
 pub struct WatchSpec {
     pub name: String,
     #[serde(default)]
@@ -153,6 +158,7 @@ impl EnvSubst for WatchSpec {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
+#[serde(deny_unknown_fields)]
 pub struct ApplySpec {
     pub path: String,
     #[serde(default = "default_namespace")]
@@ -179,6 +185,7 @@ impl EnvSubst for ApplySpec {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
+#[serde(deny_unknown_fields)]
 pub struct WaitSpec {
     pub target: String,
     pub condition: Expr,
