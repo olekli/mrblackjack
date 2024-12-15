@@ -17,6 +17,10 @@ pub trait EnvSubst {
     fn subst_env(self, env: &Env) -> Self;
 }
 
+/// # Test Type
+/// Tests of type `Cluster` will be run first and not concurrent to tests of type `User`.
+/// Limits to concurrency and number of retries can be set separately for both types
+/// via the command line arguments.
 #[derive(
     Default,
     Clone,
@@ -39,17 +43,24 @@ pub enum TestType {
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 #[serde(deny_unknown_fields)]
 pub struct TestSpec {
+    /// # Test Name
     #[serde(default)]
     pub name: String,
+    /// # Test Type
     #[serde(default, rename = "type")]
     pub test_type: TestType,
+    /// # Ordering
+    /// String will be used to determine ordering of tests by lexicographical comparison.
     #[serde(default)]
     pub ordering: Option<String>,
+    /// # Test Steps
     #[serde(default)]
     pub steps: Vec<StepSpec>,
     #[serde(skip_deserializing)]
     pub dir: PathBuf,
     #[serde(default)]
+    /// # Attempts
+    /// On failure, the test will be retried for a total number of attempts.
     pub attempts: Option<u16>,
 }
 
@@ -88,19 +99,36 @@ impl TestSpec {
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 #[serde(deny_unknown_fields)]
 pub struct StepSpec {
+    /// # Step Name
     pub name: String,
+    /// # Watches
+    /// Set any number of watches.
+    /// Will immediately start and reflect all matching resources observed in the corresponding
+    /// buckets.
+    #[serde(default)]
+    pub watch: Vec<WatchSpec>,
+    /// # Bucket Operations
+    /// Modify any existing watch bucket to only reflect certain events.
     #[serde(default)]
     pub bucket: Vec<BucketSpec>,
     #[serde(default)]
-    pub watch: Vec<WatchSpec>,
-    #[serde(default)]
+    /// # Apply Manifests
     pub apply: Vec<ApplySpec>,
     #[serde(default)]
+    /// # Delete Manifests
     pub delete: Vec<ApplySpec>,
     #[serde(default)]
+    /// # Run Script
+    /// A list of paths to shell scripts that will be _sourced_ by `sh`.
+    /// All exported env variables starting with prefix `BLACKJACK_` will be
+    /// available within the test spec as `${BLACKJACK_XXX}`.
     pub script: Vec<ScriptSpec>,
     #[serde(default)]
+    /// # Sleep
+    /// Sleep unconditionally, in seconds.
     pub sleep: u16,
+    /// # Wait
+    /// Wait for all of the listed conditions to be fulfilled.
     #[serde(default)]
     pub wait: Vec<WaitSpec>,
 }
@@ -110,7 +138,20 @@ pub type ScriptSpec = String;
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 #[serde(deny_unknown_fields)]
 pub struct BucketSpec {
+    /// # Bucket Name
+    /// Name of the bucket to set operations on.
     pub name: String,
+    /// # Operations
+    /// List of operations observed that will be reflected in the bucket.
+    ///
+    /// Not setting `Create` will result in newly created resources that match
+    /// the buckets watch pattern to be _not_ recorded.
+    ///
+    /// Not setting `Delete` will result in resources in the bucket not being removed when the
+    /// reflected resource is deleted on the cluster.
+    ///
+    /// Not setting `Patch` will result in resources in the bucket  not being updated when the
+    /// reflected resource is modified on the cluster.
     pub operations: HashSet<BucketOperation>,
 }
 
@@ -128,17 +169,31 @@ pub enum BucketOperation {
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 #[serde(deny_unknown_fields)]
 pub struct WatchSpec {
+    /// # Bucket Name
     pub name: String,
+    /// # Kind
+    /// Kind of resources to match.
     #[serde(default)]
     pub kind: String,
+    /// # Group
+    /// Group of resources to match.
     #[serde(default)]
     pub group: String,
+    /// # Version
+    /// Version of resources to match.
     #[serde(default)]
     pub version: String,
+    /// # Namespace
+    /// Namespace of resources to match.
+    /// Blackjack creates a unique namespace for each test.
+    /// If no namespace to watch is specified,
+    /// it defaults to the namespace created by Blackjack.
     #[serde(default = "default_namespace")]
     pub namespace: String,
+    /// # Label Selector
     #[serde(default)]
     pub labels: Option<BTreeMap<String, String>>,
+    /// # Field Selector
     #[serde(default)]
     pub fields: Option<BTreeMap<String, String>>,
 }
@@ -160,11 +215,19 @@ impl EnvSubst for WatchSpec {
 #[derive(Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 #[serde(deny_unknown_fields)]
 pub struct ApplySpec {
+    /// # Path of Manifest
+    /// Can be a single file or a whole directory.
     pub path: String,
+    #[serde(default = "default_override_namespace", rename = "override-namespace")]
+    /// # Override Namespace
+    /// Whether to override namespace specifications in the manifests.
+    /// Defaults to `true`.
+    pub override_namespace: bool,
+    /// # Namespace
+    /// Namespace to override with.
+    /// Defaults to the namespace created by Blackjack for this test.
     #[serde(default = "default_namespace")]
     pub namespace: String,
-    #[serde(default = "default_override_namespace", rename = "override-namespace")]
-    pub override_namespace: bool,
 }
 
 fn default_override_namespace() -> bool {
@@ -187,8 +250,13 @@ impl EnvSubst for ApplySpec {
 #[derive(Clone, Serialize, Deserialize, JsonSchema, DisplayAsJsonPretty, DebugAsJson)]
 #[serde(deny_unknown_fields)]
 pub struct WaitSpec {
+    /// # Target Bucket
+    /// The name of the bucket to check condition against.
     pub target: String,
+    /// # Condition
     pub condition: Expr,
+    /// # Timeout
+    /// Timeout in seconds. When a wait times out without the condition fulfilled, the test has failed.
     pub timeout: u16,
 }
 

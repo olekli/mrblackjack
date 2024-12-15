@@ -14,7 +14,7 @@ test:
 	sh test/run.sh
 
 schema/test_spec.yaml: src/test_spec.rs
-	cargo run --bin make-schema > $@
+	cargo run --bin make-schema | yq -P > $@
 
 publish:
 	cargo test && sh test/run.sh && cargo publish

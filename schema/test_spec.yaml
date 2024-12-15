@@ -1,286 +1,264 @@
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TestSpec",
-  "type": "object",
-  "required": [
-    "name"
-  ],
-  "properties": {
-    "dir": {
-      "default": "",
-      "readOnly": true,
-      "type": "string"
-    },
-    "name": {
-      "type": "string"
-    },
-    "steps": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/StepSpec"
-      }
-    }
-  },
-  "definitions": {
-    "ApplySpec": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": [
-            "file"
-          ],
-          "properties": {
-            "file": {
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "dir"
-          ],
-          "properties": {
-            "dir": {
-              "type": "string"
-            }
-          }
-        }
-      ]
-    },
-    "AssertSpec": {
-      "type": "object",
-      "required": [
-        "condition",
-        "target"
-      ],
-      "properties": {
-        "condition": {
-          "$ref": "#/definitions/Expr"
-        },
-        "target": {
-          "type": "string"
-        }
-      }
-    },
-    "BucketOperation": {
-      "type": "string",
-      "enum": [
-        "create",
-        "patch",
-        "delete"
-      ]
-    },
-    "BucketSpec": {
-      "type": "object",
-      "required": [
-        "name",
-        "operations"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "operations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/BucketOperation"
-          },
-          "uniqueItems": true
-        }
-      }
-    },
-    "Expr": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": [
-            "and"
-          ],
-          "properties": {
-            "and": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/Expr"
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "or"
-          ],
-          "properties": {
-            "or": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/Expr"
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "not"
-          ],
-          "properties": {
-            "not": {
-              "$ref": "#/definitions/Expr"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "size"
-          ],
-          "properties": {
-            "size": {
-              "type": "integer",
-              "format": "uint",
-              "minimum": 0.0
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "one"
-          ],
-          "properties": {
-            "one": true
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "all"
-          ],
-          "properties": {
-            "all": true
-          }
-        }
-      ]
-    },
-    "StepSpec": {
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "apply": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ApplySpec"
-          }
-        },
-        "assert": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/AssertSpec"
-          }
-        },
-        "bucket": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/BucketSpec"
-          }
-        },
-        "delete": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ApplySpec"
-          }
-        },
-        "name": {
-          "type": "string"
-        },
-        "wait": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/WaitSpec"
-          }
-        },
-        "watch": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/WatchSpec"
-          }
-        }
-      }
-    },
-    "WaitSpec": {
-      "type": "object",
-      "required": [
-        "condition",
-        "target",
-        "timeout"
-      ],
-      "properties": {
-        "condition": {
-          "$ref": "#/definitions/Expr"
-        },
-        "target": {
-          "type": "string"
-        },
-        "timeout": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        }
-      }
-    },
-    "WatchSpec": {
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "fields": {
-          "default": null,
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "group": {
-          "default": "",
-          "type": "string"
-        },
-        "kind": {
-          "default": "",
-          "type": "string"
-        },
-        "labels": {
-          "default": null,
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "name": {
-          "type": "string"
-        },
-        "version": {
-          "default": "",
-          "type": "string"
-        }
-      }
-    }
-  }
-}
+$schema: http://json-schema.org/draft-07/schema#
+title: TestSpec
+type: object
+properties:
+  attempts:
+    title: Attempts
+    description: On failure, the test will be retried for a total number of attempts.
+    default: null
+    type:
+      - integer
+      - "null"
+    format: uint16
+    minimum: 0.0
+  dir:
+    default: ""
+    readOnly: true
+    type: string
+  name:
+    title: Test Name
+    default: ""
+    type: string
+  ordering:
+    title: Ordering
+    description: String will be used to determine ordering of tests by lexicographical comparison.
+    default: null
+    type:
+      - string
+      - "null"
+  steps:
+    title: Test Steps
+    default: []
+    type: array
+    items:
+      $ref: '#/definitions/StepSpec'
+  type:
+    title: Test Type
+    default: user
+    allOf:
+      - $ref: '#/definitions/TestType'
+additionalProperties: false
+definitions:
+  ApplySpec:
+    type: object
+    required:
+      - path
+    properties:
+      namespace:
+        title: Namespace
+        description: Namespace to override with. Defaults to the namespace created by Blackjack for this test.
+        default: ${BLACKJACK_NAMESPACE}
+        type: string
+      override-namespace:
+        title: Override Namespace
+        description: Whether to override namespace specifications in the manifests. Defaults to `true`.
+        default: true
+        type: boolean
+      path:
+        title: Path of Manifest
+        description: Can be a single file or a whole directory.
+        type: string
+    additionalProperties: false
+  BucketOperation:
+    type: string
+    enum:
+      - create
+      - patch
+      - delete
+  BucketSpec:
+    type: object
+    required:
+      - name
+      - operations
+    properties:
+      name:
+        title: Bucket Name
+        description: Name of the bucket to set operations on.
+        type: string
+      operations:
+        title: Operations
+        description: |-
+          List of operations observed that will be reflected in the bucket.
+
+          Not setting `Create` will result in newly created resources that match the buckets watch pattern to be _not_ recorded.
+
+          Not setting `Delete` will result in resources in the bucket not being removed when the reflected resource is deleted on the cluster.
+
+          Not setting `Patch` will result in resources in the bucket  not being updated when the reflected resource is modified on the cluster.
+        type: array
+        items:
+          $ref: '#/definitions/BucketOperation'
+        uniqueItems: true
+    additionalProperties: false
+  Expr:
+    anyOf:
+      - type: object
+        required:
+          - and
+        properties:
+          and:
+            type: array
+            items:
+              $ref: '#/definitions/Expr'
+      - type: object
+        required:
+          - or
+        properties:
+          or:
+            type: array
+            items:
+              $ref: '#/definitions/Expr'
+      - type: object
+        required:
+          - not
+        properties:
+          not:
+            $ref: '#/definitions/Expr'
+      - type: object
+        required:
+          - size
+        properties:
+          size:
+            type: integer
+            format: uint
+            minimum: 0.0
+      - type: object
+        required:
+          - one
+        properties:
+          one: true
+      - type: object
+        required:
+          - all
+        properties:
+          all: true
+  StepSpec:
+    type: object
+    required:
+      - name
+    properties:
+      apply:
+        title: Apply Manifests
+        default: []
+        type: array
+        items:
+          $ref: '#/definitions/ApplySpec'
+      bucket:
+        title: Bucket Operations
+        description: Modify any existing watch bucket to only reflect certain events.
+        default: []
+        type: array
+        items:
+          $ref: '#/definitions/BucketSpec'
+      delete:
+        title: Delete Manifests
+        default: []
+        type: array
+        items:
+          $ref: '#/definitions/ApplySpec'
+      name:
+        title: Step Name
+        type: string
+      script:
+        title: Run Script
+        description: A list of paths to shell scripts that will be _sourced_ by `sh`. All exported env variables starting with prefix `BLACKJACK_` will be available within the test spec as `${BLACKJACK_XXX}`.
+        default: []
+        type: array
+        items:
+          type: string
+      sleep:
+        title: Sleep
+        description: Sleep unconditionally, in seconds.
+        default: 0
+        type: integer
+        format: uint16
+        minimum: 0.0
+      wait:
+        title: Wait
+        description: Wait for all of the listed conditions to be fulfilled.
+        default: []
+        type: array
+        items:
+          $ref: '#/definitions/WaitSpec'
+      watch:
+        title: Watches
+        description: Set any number of watches. Will immediately start and reflect all matching resources observed in the corresponding buckets.
+        default: []
+        type: array
+        items:
+          $ref: '#/definitions/WatchSpec'
+    additionalProperties: false
+  TestType:
+    title: Test Type
+    description: Tests of type `Cluster` will be run first and not concurrent to tests of type `User`. Limits to concurrency and number of retries can be set separately for both types via the command line arguments.
+    type: string
+    enum:
+      - cluster
+      - user
+  WaitSpec:
+    type: object
+    required:
+      - condition
+      - target
+      - timeout
+    properties:
+      condition:
+        title: Condition
+        allOf:
+          - $ref: '#/definitions/Expr'
+      target:
+        title: Target Bucket
+        description: The name of the bucket to check condition against.
+        type: string
+      timeout:
+        title: Timeout
+        description: Timeout in seconds. When a wait times out without the condition fulfilled, the test has failed.
+        type: integer
+        format: uint16
+        minimum: 0.0
+    additionalProperties: false
+  WatchSpec:
+    type: object
+    required:
+      - name
+    properties:
+      fields:
+        title: Field Selector
+        default: null
+        type:
+          - object
+          - "null"
+        additionalProperties:
+          type: string
+      group:
+        title: Group
+        description: Group of resources to match.
+        default: ""
+        type: string
+      kind:
+        title: Kind
+        description: Kind of resources to match.
+        default: ""
+        type: string
+      labels:
+        title: Label Selector
+        default: null
+        type:
+          - object
+          - "null"
+        additionalProperties:
+          type: string
+      name:
+        title: Bucket Name
+        type: string
+      namespace:
+        title: Namespace
+        description: Namespace of resources to match. Blackjack creates a unique namespace for each test. If no namespace to watch is specified, it defaults to the namespace created by Blackjack.
+        default: ${BLACKJACK_NAMESPACE}
+        type: string
+      version:
+        title: Version
+        description: Version of resources to match.
+        default: ""
+        type: string
+    additionalProperties: false
