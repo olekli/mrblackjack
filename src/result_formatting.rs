@@ -20,7 +20,7 @@ pub fn log_result(result: &TestResult) {
                 test_name,
                 step_name
             );
-            log::info!("{}", failure);
+            log::info!("{failure}");
         }
     }
 }

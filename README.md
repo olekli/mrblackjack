@@ -147,4 +147,55 @@ The full schema is located in `schema/test_spec.yaml`. This document is a high-l
 
 Refer to the schema for precise validation rules and defaults.
 
+## Security Considerations
+
+### Script Execution
+
+The `script` feature allows running arbitrary shell scripts during test execution. Scripts are sourced by `sh` and executed with the same permissions as the `blackjack` process. This provides full flexibility but requires trust in the test scripts.
+
+**Key security points:**
+
+1. **Full shell access**: Scripts have unrestricted access to the shell environment, filesystem, and network (within the execution context).
+
+2. **Environment variables**: All `BLACKJACK_*` prefixed environment variables are passed to scripts and can be exported back to subsequent test steps.
+
+3. **Kubernetes access**: Scripts inherit the kubeconfig and credentials used by blackjack, giving them full cluster access.
+
+**Recommendations for production/CI environments:**
+
+- Only run tests from trusted sources
+- Review all test scripts before execution
+- Run blackjack with minimal required permissions
+- Use dedicated service accounts with limited RBAC permissions
+
+### Sandboxing Options
+
+For environments requiring additional isolation, consider these sandboxing approaches:
+
+1. **Container isolation**: Run blackjack inside a container with limited capabilities:
+   ```bash
+   docker run --rm \
+     --cap-drop=ALL \
+     --cap-add=NET_RAW \
+     -v ~/.kube:/root/.kube:ro \
+     -v ./tests:/tests:ro \
+     blackjack /tests
+   ```
+
+2. **Firejail** (Linux): Sandbox script execution with filesystem and network restrictions:
+   ```bash
+   firejail --net=none --private blackjack ./tests
+   ```
+
+3. **bubblewrap** (Linux): Low-level namespace isolation:
+   ```bash
+   bwrap --ro-bind /usr /usr --dev /dev --proc /proc \
+     --bind ./tests ./tests \
+     blackjack ./tests
+   ```
+
+4. **Dedicated namespaces**: Use Kubernetes namespaces with strict NetworkPolicies and ResourceQuotas to limit blast radius.
+
+5. **CI isolation**: In CI environments, run tests in ephemeral environments (e.g., ephemeral Kubernetes clusters, GitHub Actions runners) that are destroyed after each run.
+
 ## Known Issues

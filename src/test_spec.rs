@@ -68,8 +68,8 @@ impl TestSpec {
     pub async fn new_from_file(dirname: PathBuf) -> Result<TestSpec> {
         let path = dirname.join(Path::new("test.yaml"));
         let data = read_to_string(path).await?;
-        let mut testspec: TestSpec = serde_yaml::from_str(&data)?;
-        if testspec.name == "" {
+        let mut testspec: TestSpec = serde_yml::from_str(&data)?;
+        if testspec.name.is_empty() {
             let mut it = dirname.components();
             let n2 = it.next_back().map_or_else(
                 || "".to_string(),
@@ -308,24 +308,24 @@ impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::AndExpr { and } => {
-                let exprs: Vec<String> = and.iter().map(|e| format!("{}", e)).collect();
+                let exprs: Vec<String> = and.iter().map(|e| format!("{e}")).collect();
                 write!(f, "AND({})", exprs.join(", "))
             }
             Expr::OrExpr { or } => {
-                let exprs: Vec<String> = or.iter().map(|e| format!("{}", e)).collect();
+                let exprs: Vec<String> = or.iter().map(|e| format!("{e}")).collect();
                 write!(f, "OR({})", exprs.join(", "))
             }
             Expr::NotExpr { not } => {
-                write!(f, "NOT({})", not)
+                write!(f, "NOT({not})")
             }
             Expr::SizeExpr { size } => {
-                write!(f, "size == {}", size)
+                write!(f, "size == {size}")
             }
             Expr::OneExpr { one } => {
-                write!(f, "ANY({})", one)
+                write!(f, "ANY({one})")
             }
             Expr::AllExpr { all } => {
-                write!(f, "ALL({})", all)
+                write!(f, "ALL({all})")
             }
         }
     }
@@ -350,5 +350,5 @@ fn env_subst_json(value: serde_json::Value, env: &Env) -> serde_json::Value {
 }
 
 fn subst_or_not(s: String, env: &Env) -> String {
-    envsubst::substitute(&s, env).or::<String>(Ok(s)).unwrap()
+    envsubst::substitute(&s, env).unwrap_or(s)
 }

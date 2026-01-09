@@ -6,7 +6,10 @@ use k8s_openapi::api::core::v1::Namespace;
 use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
 use kube::{Api, Client};
 use serde_json::json;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, timeout, Duration};
+
+/// Default timeout for Kubernetes API calls (in seconds)
+const API_TIMEOUT_SECS: u64 = 60;
 
 pub struct NamespaceHandle {
     namespace: String,
@@ -31,7 +34,14 @@ impl NamespaceHandle {
             ..Default::default()
         };
 
-        match self.api.create(&PostParams::default(), &ns).await {
+        let result = timeout(
+            Duration::from_secs(API_TIMEOUT_SECS),
+            self.api.create(&PostParams::default(), &ns)
+        )
+        .await
+        .map_err(|_| Error::ApiTimeout(format!("Create namespace '{}' timed out", self.namespace)))?;
+
+        match result {
             Ok(_) => Ok(()),
             Err(kube::Error::Api(ae)) if ae.code == 409 => Err(Error::NamespaceExists),
             Err(e) => Err(Error::from(e)),

@@ -23,7 +23,7 @@ use tokio::task::JoinSet;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
-const FINALIZER_NAME: &str = "blackjack.io/finalizer";
+const FINALIZER_NAME: &str = "mrblackjack.olekliemann.de/finalizer";
 
 pub struct Bucket {
     pub allowed_operations: HashSet<BucketOperation>,
@@ -59,6 +59,12 @@ pub struct CollectedData {
 }
 pub type CollectedDataContainer = Arc<Mutex<CollectedData>>;
 
+impl Default for CollectedData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CollectedData {
     pub fn new() -> Self {
         CollectedData {
@@ -67,7 +73,7 @@ impl CollectedData {
     }
 
     pub fn contains(&self, uid: &str) -> bool {
-        for (_, bucket) in &self.buckets {
+        for bucket in self.buckets.values() {
             if bucket.data.contains_key(uid) {
                 return true;
             }
@@ -114,11 +120,11 @@ impl CollectedData {
                 let patch_params = PatchParams::default();
                 log::debug!("calling API");
                 match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
-                    Ok(_) => log::debug!("Removed finalizer from '{}'", name),
-                    Err(e) => log::warn!("Failed to remove finalizer from '{}': {}", name, e),
+                    Ok(_) => log::debug!("Removed finalizer from '{name}'"),
+                    Err(e) => log::warn!("Failed to remove finalizer from '{name}': {e}"),
                 }
             } else {
-                log::warn!("Resource with UID '{}' not found in collected_data", uid);
+                log::warn!("Resource with UID '{uid}' not found in collected_data");
             }
         }
 
@@ -197,29 +203,27 @@ impl CollectorBrief {
         let is_marked_for_deletion = obj.metadata.deletion_timestamp.is_some();
         let mut is_stored = (*data).contains(&uid);
         let mut has_finalizer = obj.finalizers().contains(&FINALIZER_NAME.to_string());
-        if !is_stored && !is_marked_for_deletion {
-            if !has_finalizer {
-                let patch = json!({
-                    "metadata": {
-                        "finalizers": [FINALIZER_NAME]
-                    }
-                });
-                let patch_params = PatchParams::default();
-                match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
-                    Ok(_) => {
-                        has_finalizer = true;
-                        log::debug!("Added finalizer to '{}'", name);
-                    }
-                    Err(e) => {
-                        log::debug!("Failed to add finalizer to '{}': {}", name, e);
-                    }
+        if !is_stored && !is_marked_for_deletion && !has_finalizer {
+            let patch = json!({
+                "metadata": {
+                    "finalizers": [FINALIZER_NAME]
+                }
+            });
+            let patch_params = PatchParams::default();
+            match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
+                Ok(_) => {
+                    has_finalizer = true;
+                    log::debug!("Added finalizer to '{name}'");
+                }
+                Err(e) => {
+                    log::debug!("Failed to add finalizer to '{name}': {e}");
                 }
             }
         }
         if is_marked_for_deletion {
             if is_stored {
                 is_stored = false;
-                for (_, bucket) in &mut (*data).buckets {
+                for bucket in data.buckets.values_mut() {
                     if bucket.allowed_operations.contains(&BucketOperation::Delete) {
                         bucket.data.remove(&uid);
                     } else {
@@ -235,16 +239,16 @@ impl CollectorBrief {
                 });
                 let patch_params = PatchParams::default();
                 match api.patch(&name, &patch_params, &Patch::Merge(&patch)).await {
-                    Ok(_) => log::debug!("Removed finalizer from '{}'", name),
-                    Err(e) => log::debug!("Failed to remove finalizer from '{}': {}", name, e),
+                    Ok(_) => log::debug!("Removed finalizer from '{name}'"),
+                    Err(e) => log::debug!("Failed to remove finalizer from '{name}': {e}"),
                 }
             }
         } else {
-            let value = serde_json::to_value(&obj).unwrap_or_else(|_| serde_json::Value::Null);
-            let bucket = (*data)
+            let value = serde_json::to_value(&obj).unwrap_or(serde_json::Value::Null);
+            let bucket = data
                 .buckets
                 .entry(self.spec.name.clone())
-                .or_insert_with(Default::default);
+                .or_default();
             if (!bucket.data.contains_key(&uid)
                 && bucket.allowed_operations.contains(&BucketOperation::Create))
                 || (bucket.data.contains_key(&uid)
@@ -263,32 +267,26 @@ impl CollectorBrief {
             .spec
             .labels
             .as_ref()
-            .and_then(|labels| {
-                Some(
-                    labels
-                        .iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )
+            .map(|labels| {
+                labels
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
             })
-            .or_else(|| Some(String::new()))
-            .unwrap();
+            .unwrap_or_default();
         let field_selector = self
             .spec
             .fields
             .as_ref()
-            .and_then(|fields| {
-                Some(
-                    fields
-                        .iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )
+            .map(|fields| {
+                fields
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
             })
-            .or_else(|| Some(String::new()))
-            .unwrap();
+            .unwrap_or_default();
 
         let config = watcher::Config {
             label_selector: Some(label_selector),
