@@ -17,20 +17,52 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Duration};
+use uuid::Uuid;
 
-fn make_namespace(name: &String) -> String {
-    let mut truncated_name = name.clone();
-    truncated_name.truncate(32);
-    format!(
-        "{}-{}-{}",
-        truncated_name,
-        random_word::gen_len(8, random_word::Lang::En)
-            .or_else(|| Some(""))
-            .unwrap(),
-        random_word::gen_len(8, random_word::Lang::En)
-            .or_else(|| Some(""))
-            .unwrap()
-    )
+/// Maximum length for Kubernetes namespace names
+const MAX_NAMESPACE_LEN: usize = 63;
+
+/// Generate a random suffix using random words or UUID as fallback
+fn random_suffix() -> String {
+    random_word::gen_len(8, random_word::Lang::En)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            // Use first 8 chars of UUID as fallback
+            Uuid::new_v4().to_string()[..8].to_string()
+        })
+}
+
+fn make_namespace(name: &str) -> String {
+    // Format: {name}-{word1}-{word2}
+    // Reserve space for suffix: 8 + 1 + 8 = 17 chars (two 8-char words plus hyphen)
+    let suffix = format!("{}-{}", random_suffix(), random_suffix());
+    let max_name_len = MAX_NAMESPACE_LEN - suffix.len() - 1; // -1 for separator
+    
+    let truncated_name: String = name
+        .chars()
+        .take(max_name_len)
+        .collect::<String>()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .collect();
+    
+    // Remove leading/trailing hyphens and collapse multiple hyphens
+    let clean_name: String = truncated_name
+        .trim_matches('-')
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    
+    let namespace = if clean_name.is_empty() {
+        suffix
+    } else {
+        format!("{clean_name}-{suffix}")
+    };
+    
+    // Final safety check - truncate if somehow still too long
+    namespace.chars().take(MAX_NAMESPACE_LEN).collect()
 }
 
 async fn run_step(
@@ -51,8 +83,13 @@ async fn run_step(
     log::debug!("Setting buckets");
     for bucket_spec in &step.bucket {
         let mut data = collected_data.lock().await;
-        (*data)
-            .buckets
+        if !data.buckets.contains_key(&bucket_spec.name) {
+            log::warn!(
+                "Bucket '{}' referenced in bucket spec but no watch created it. Creating empty bucket.",
+                bucket_spec.name
+            );
+        }
+        data.buckets
             .entry(bucket_spec.name.clone())
             .and_modify(|bucket| bucket.allowed_operations = bucket_spec.operations.clone())
             .or_insert_with(|| Bucket::new(bucket_spec.operations.clone()));
@@ -61,7 +98,7 @@ async fn run_step(
     log::debug!("Applying manifests");
     for apply in step.apply {
         let apply = apply.subst_env(&env);
-        log::debug!("Creating manifest: {:?}", apply);
+        log::debug!("Creating manifest: {apply:?}");
         let handle = ManifestHandle::new(apply, dirname.clone(), client.clone()).await?;
         log::debug!("Applying manifest");
         handle.apply().await?;
@@ -71,7 +108,7 @@ async fn run_step(
     log::debug!("Deleting resources");
     for delete in step.delete {
         let delete = delete.subst_env(&env);
-        log::debug!("Deleting manifest: {:?}", delete);
+        log::debug!("Deleting manifest: {delete:?}");
         ManifestHandle::new(delete, dirname.clone(), client.clone())
             .await?
             .delete()
@@ -103,7 +140,7 @@ async fn run_step(
 
     log::debug!("Waiting");
     let wait: Vec<WaitSpec> = step.wait.into_iter().map(|w| w.subst_env(&env)).collect();
-    if wait.len() > 0 {
+    if !wait.is_empty() {
         wait_for_all(wait, collected_data.clone()).await?;
     }
 
@@ -145,7 +182,7 @@ async fn run_steps(
             log::error!("Test step {}/{} failed", test_spec.name, step_name);
             FailedTest {
                 test_name: test_spec.name.clone(),
-                step_name: step_name,
+                step_name,
                 failure: err,
             }
         })?;
@@ -167,8 +204,8 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, TestSpec,
         step_name: "".to_string(),
         failure: err,
     });
-    if ns.is_err() {
-        return (Err(ns.unwrap_err()), test_spec, None);
+    if let Err(e) = ns {
+        return (Err(e), test_spec, None);
     }
 
     let mut manifests = Vec::<ManifestHandle>::new();
@@ -190,7 +227,7 @@ async fn run_test(client: Client, test_spec: TestSpec) -> (TestResult, TestSpec,
         _ = sigint => {
             log::info!("Received SIGINT, exiting...");
             Err(FailedTest {
-                test_name: test_name,
+                test_name,
                 step_name: "".to_string(),
                 failure: Error::SIGINT,
             })
@@ -243,7 +280,7 @@ async fn run_all_tests(
         }
         if let Some(result) = tasks.join_next().await {
             let (test_result, test_spec, cleanup_task) =
-                result.map_err(|err| Error::JoinError(err))?;
+                result.map_err(Error::JoinError)?;
             attempt_counter
                 .entry(test_spec.name.clone())
                 .and_modify(|i| *i += 1)
@@ -254,7 +291,7 @@ async fn run_all_tests(
             if test_result.is_ok() {
                 results.push(test_result);
             } else {
-                let attempts = test_spec.attempts.or(Some(attempts)).unwrap();
+                let attempts = test_spec.attempts.unwrap_or(attempts);
                 if attempt_counter.get(&test_spec.name).unwrap() < &attempts {
                     it = it.chain(std::iter::once(test_spec)).collect::<Vec<_>>().into_iter();
                     if next.is_none() {
@@ -295,17 +332,17 @@ async fn run_all_tests(
 pub async fn run_test_suite(dirname: &Path) -> Result<()> {
     let client = Client::try_default().await?;
     let test_specs = discover_tests(&dirname.to_path_buf()).await?;
-    let mut sorted_test_specs = test_specs
+    let mut sorted_test_specs: HashMap<TestType, Vec<TestSpec>> = test_specs
         .into_iter()
         .fold(HashMap::new(), |mut map, item| {
             map.entry(item.test_type.clone())
-                .or_insert(Vec::new())
+                .or_default()
                 .push(item);
             map
         });
-    for (_, tests) in &mut sorted_test_specs {
+    for tests in sorted_test_specs.values_mut() {
         tests.sort_by(|lhs, rhs| match (&lhs.ordering, &rhs.ordering) {
-            (Some(ref l), Some(ref r)) => l.cmp(r),
+            (Some(l), Some(r)) => l.cmp(r),
             (Some(_), None) => cmp::Ordering::Greater,
             (None, Some(_)) => cmp::Ordering::Less,
             (None, None) => cmp::Ordering::Equal,
@@ -360,8 +397,7 @@ async fn discover_tests(dirname: &PathBuf) -> Result<Vec<TestSpec>> {
     if files
         .iter()
         .filter_map(|e| e.file_name())
-        .find(|&x| x == "test.yaml")
-        .is_some()
+        .any(|x| x == "test.yaml")
     {
         result.push(TestSpec::new_from_file(dirname.clone()).await?);
     } else {

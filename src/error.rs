@@ -35,7 +35,7 @@ pub enum Error {
     ParseGroupVersionError(#[from] kube::core::gvk::ParseGroupVersionError),
 
     #[error("Serialization error: {0}")]
-    SerializationYamlError(#[from] serde_yaml::Error),
+    SerializationYamlError(#[from] serde_yml::Error),
 
     #[error("Serialization error: {0}")]
     SerializationJsonError(#[from] serde_json::Error),
@@ -75,6 +75,9 @@ pub enum Error {
 
     #[error("Other error: {0}")]
     Other(String),
+
+    #[error("API call timed out: {0}")]
+    ApiTimeout(String),
 }
 
 #[derive(Clone, Serialize, Deserialize, DisplayAsJsonPretty, DebugAsJson)]

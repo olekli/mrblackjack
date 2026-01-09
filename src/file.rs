@@ -5,17 +5,23 @@ use crate::error::Result;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
+/// Check if a path has a YAML extension (.yaml or .yml)
+fn is_yaml_file(path: &Path) -> bool {
+    path.extension()
+        .map(|ext| {
+            let ext = ext.to_string_lossy();
+            ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml")
+        })
+        .unwrap_or(false)
+}
+
 pub async fn read_yaml_files(dirname: PathBuf) -> Result<String> {
     log::debug!("read_yaml_files: {dirname:?}");
     let mut combined = String::new();
     let mut entries: Vec<_> = list_files(&dirname)
         .await?
         .into_iter()
-        .filter(|path| {
-            path.extension()
-                .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("yaml"))
-                .unwrap_or(false)
-        })
+        .filter(|path| is_yaml_file(path))
         .collect();
 
     entries.sort();

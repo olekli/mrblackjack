@@ -4,7 +4,6 @@
 use blackjack::config::{Config};
 use blackjack::error::Result;
 use blackjack::run_test::run_test_suite;
-use env_logger;
 use env_logger::{Builder, Env};
 use std::path::Path;
 use clap::Parser;

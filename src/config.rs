@@ -42,7 +42,7 @@ static CONFIG: OnceCell<Config> = OnceCell::new();
 impl Config {
     pub async fn new(filename: Option<String>) -> Result<Self> {
         if let Some(path) = filename {
-            Ok(serde_yaml::from_str(&fs::read_to_string(&path).await?)?)
+            Ok(serde_yml::from_str(&fs::read_to_string(&path).await?)?)
         } else {
             Ok(Config::default())
         }

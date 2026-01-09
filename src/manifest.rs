@@ -8,10 +8,15 @@ use kube::api::{Api, DeleteParams, DynamicObject, Patch, PatchParams};
 use kube::core::discovery::Scope;
 use kube::{core::GroupVersionKind, Client, ResourceExt};
 use serde::Deserialize;
-use serde_yaml::Value;
+use serde_yml::Value;
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::fs;
+use tokio::time::timeout;
 use kube::Discovery;
+
+/// Default timeout for Kubernetes API calls (in seconds)
+const API_TIMEOUT_SECS: u64 = 60;
 
 #[derive(Debug)]
 pub struct ManifestHandle {
@@ -37,10 +42,15 @@ impl ManifestHandle {
         namespace_override: Option<String>,
     ) -> Result<Self> {
         let mut resources = Vec::new();
-        let discovery = Discovery::new(client.clone()).run().await?;
-        for document in serde_yaml::Deserializer::from_str(&yaml_str) {
+        let discovery = timeout(
+            Duration::from_secs(API_TIMEOUT_SECS),
+            Discovery::new(client.clone()).run()
+        )
+        .await
+        .map_err(|_| Error::ApiTimeout("Discovery::run timed out".to_string()))??;
+        for document in serde_yml::Deserializer::from_str(&yaml_str) {
             let yaml_value: Value = Value::deserialize(document)?;
-            let mut dynamic_obj: DynamicObject = serde_yaml::from_value(yaml_value)?;
+            let mut dynamic_obj: DynamicObject = serde_yml::from_value(yaml_value)?;
             let gvk = GroupVersionKind::try_from(dynamic_obj.types.clone().unwrap_or_default())?;
 
             if namespace_override.is_some() && gvk.kind == "Namespace" {
@@ -60,8 +70,7 @@ impl ManifestHandle {
                         .metadata
                         .namespace
                         .clone()
-                        .or_else(|| Some("default".to_string()))
-                        .unwrap();
+                        .unwrap_or_else(|| "default".to_string());
 
                     (
                         Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, &ar),
@@ -110,21 +119,19 @@ impl ManifestHandle {
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
 
-            log::debug!(
-                "Applying resource: kind={}, name={}, namespace={}",
-                kind,
-                name,
-                namespace
-            );
+            log::debug!("Applying resource: kind={kind}, name={name}, namespace={namespace}");
 
             let patch_params = PatchParams::apply("blackjack").force();
             let patch = Patch::Apply(dynamic_obj);
-            let result = api
-                .patch(&dynamic_obj.name_any(), &patch_params, &patch)
-                .await;
-            if result.is_err() {
-                log::error!("{result:?}");
-                return Err(Error::KubeError(result.unwrap_err()));
+            let result = timeout(
+                Duration::from_secs(API_TIMEOUT_SECS),
+                api.patch(&dynamic_obj.name_any(), &patch_params, &patch)
+            )
+            .await
+            .map_err(|_| Error::ApiTimeout(format!("Patch timed out for {kind}/{name}")))?;
+            if let Err(e) = result {
+                log::error!("{e:?}");
+                return Err(Error::KubeError(e));
             }
         }
 
@@ -138,15 +145,16 @@ impl ManifestHandle {
             let name = dynamic_obj.name_any();
             let namespace = dynamic_obj.namespace().unwrap_or_default();
 
-            log::debug!(
-                "Deleting resource: kind={}, name={}, namespace={}",
-                kind,
-                name,
-                namespace
-            );
+            log::debug!("Deleting resource: kind={kind}, name={name}, namespace={namespace}");
 
             let delete_params = DeleteParams::default();
-            match api.delete(&dynamic_obj.name_any(), &delete_params).await {
+            let result = timeout(
+                Duration::from_secs(API_TIMEOUT_SECS),
+                api.delete(&dynamic_obj.name_any(), &delete_params)
+            )
+            .await
+            .map_err(|_| Error::ApiTimeout(format!("Delete timed out for {kind}/{name}")))?;
+            match result {
                 Ok(_) => {}
                 Err(kube::Error::Api(ae)) if ae.code == 404 => {}
                 Err(e) => return Err(Error::from(e)),
